@@ -1,13 +1,13 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 
-// nav items — ตรงกับ feature ของระบบ
 const NAV = [
-  { to: '/dashboard', label: 'ภาพรวม',        icon: '📊' },
-  { to: '/stock',     label: 'สต็อกคงเหลือ',  icon: '📦' },
-  { to: '/purchase',  label: 'ซื้อเข้า',       icon: '⬇️' },
-  { to: '/sale',      label: 'ขายออก',         icon: '⬆️' },
-  { to: '/daily',     label: 'P&L รายวัน',     icon: '📝' },
-  { to: '/receipt', label: 'ใบรับสินค้า', icon: '🧾' },
+  { to: '/dashboard', label: 'ภาพรวม',         icon: '📊' },
+  { to: '/stock',     label: 'สต็อกคงเหลือ',   icon: '📦' },
+  { to: '/purchase',  label: 'ซื้อเข้า',        icon: '⬇️' },
+  { to: '/sale',      label: 'ขายออก',          icon: '⬆️' },
+  { to: '/history',   label: 'ประวัติรายการ',   icon: '📋' },
+  { to: '/daily',     label: 'P&L รายวัน',      icon: '📝' },
+  { to: '/products',  label: 'จัดการสินค้า',    icon: '⚙️' },
 ]
 
 export default function Layout() {

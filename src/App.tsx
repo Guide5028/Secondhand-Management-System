@@ -6,10 +6,9 @@ import SalePage       from './pages/SalePage.tsx'
 import StockPage      from './pages/StockPage.tsx'
 import DailyPLPage    from './pages/DailyPLPage.tsx'
 import ReceiptPage    from './pages/ReceiptPage.tsx'
+import HistoryPage    from './pages/HistoryPage.tsx'
+import ProductsPage   from './pages/ProductsPage.tsx'
 
-// App = โครงสร้างหน้าทั้งหมด
-// Layout = sidebar + topbar ที่แชร์กันทุกหน้า
-// Routes = เส้นทางแต่ละหน้า
 export default function App() {
   return (
     <Routes>
@@ -19,7 +18,9 @@ export default function App() {
         <Route path="purchase"  element={<PurchasePage />} />
         <Route path="sale"      element={<SalePage />} />
         <Route path="stock"     element={<StockPage />} />
+        <Route path="history"   element={<HistoryPage />} />
         <Route path="daily"     element={<DailyPLPage />} />
+        <Route path="products"  element={<ProductsPage />} />
         <Route path="receipt"   element={<ReceiptPage />} />
       </Route>
     </Routes>
