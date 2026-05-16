@@ -8,21 +8,24 @@ interface ReceiptItem {
 }
 
 interface ReceiptData {
+  type?:      'purchase' | 'sale'
   receiptNo:  string
   date:       string
-  sellerName: string
+  sellerName?: string
+  buyerName?:  string
   items:      ReceiptItem[]
   total:      number
 }
 
 const MOCK: ReceiptData = {
+  type:       'purchase',
   receiptNo:  'REC-ตัวอย่าง',
   date:       new Date().toLocaleDateString('th-TH'),
   sellerName: 'ลูกค้าทั่วไป',
   items: [
-    { name: 'สแตนเลส', weight: 17.90, price: 2.60 },
+    { name: 'สแตนเลส',   weight: 17.90, price: 2.60 },
     { name: 'มีเนียมบาง', weight: 1.40,  price: 9.50 },
-    { name: 'กระดาษลัง', weight: 6.20, price: 3.00 },
+    { name: 'กระดาษลัง',  weight: 6.20,  price: 3.00 },
   ],
   total: 0,
 }
@@ -43,6 +46,12 @@ export default function ReceiptPage() {
   const data: ReceiptData = raw ? JSON.parse(raw) : MOCK
   const total = data.items.reduce((s, i) => s + i.weight * i.price, 0)
 
+  const isSale     = data.type === 'sale'
+  const docTitle   = isSale ? 'ใบเสร็จรับเงิน' : 'ใบรับสินค้า'
+  const partyLabel = isSale ? 'ชื่อผู้ซื้อ' : 'ชื่อผู้ขาย'
+  const partyName  = isSale ? (data.buyerName ?? '') : (data.sellerName ?? '')
+  const backPath   = isSale ? '/sale' : '/purchase'
+
   const handlePrint = () => {
     const content = printRef.current
     if (!content) return
@@ -51,7 +60,7 @@ export default function ReceiptPage() {
     win.document.write(`
       <html>
         <head>
-          <title>ใบรับสินค้า ${data.receiptNo}</title>
+          <title>${docTitle} ${data.receiptNo}</title>
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
             body { font-family: 'Sarabun','Tahoma',sans-serif; font-size: 13px; padding: 20px; }
@@ -75,11 +84,11 @@ export default function ReceiptPage() {
           <h1>${SHOP.th}</h1>
           <p class="en">${SHOP.en}</p>
           <p class="sub">โทร ${SHOP.phone} (${SHOP.hours})</p>
-          <p class="title">ใบรับสินค้า</p>
+          <p class="title">${docTitle}</p>
           <div class="meta">
             <div>
               <div>เลขที่: <strong>${data.receiptNo}</strong></div>
-              <div>ชื่อผู้ขาย: ${data.sellerName}</div>
+              <div>${partyLabel}: ${partyName}</div>
             </div>
             <div style="text-align:right">
               <div>วันที่: ${data.date}</div>
@@ -120,8 +129,8 @@ export default function ReceiptPage() {
           </table>
           <p class="note">* น้ำหนักสุทธิ ซึ่งอาจละเอียดเป็นขีด แตกต่างในรูปตัวเลขคณิต</p>
           <div class="sign">
-            <div class="sign-line">ผู้รับ</div>
-            <div class="sign-line">ผู้ส่ง</div>
+            <div class="sign-line">${isSale ? 'ผู้รับเงิน' : 'ผู้รับ'}</div>
+            <div class="sign-line">${isSale ? 'ผู้ซื้อ' : 'ผู้ส่ง'}</div>
             <div class="sign-line">ผู้ตรวจ</div>
           </div>
         </body>
@@ -138,11 +147,11 @@ export default function ReceiptPage() {
 
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-base font-semibold text-slate-800">ใบรับสินค้า</h2>
+          <h2 className="text-base font-semibold text-slate-800">{docTitle}</h2>
           <p className="text-sm text-slate-400">{data.receiptNo}</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => navigate('/purchase')} className="btn-secondary">← กลับ</button>
+          <button onClick={() => navigate(backPath)} className="btn-secondary">← กลับ</button>
           <button onClick={handlePrint} className="btn-primary flex items-center gap-2">
             🖨️ พิมพ์ใบเสร็จ
           </button>
@@ -157,7 +166,7 @@ export default function ReceiptPage() {
           <h1 className="text-xl font-bold text-slate-800">{SHOP.th}</h1>
           <p className="text-sm font-medium text-slate-500 tracking-wide">{SHOP.en}</p>
           <p className="text-sm text-slate-400">โทร {SHOP.phone} ({SHOP.hours})</p>
-          <p className="text-base font-semibold mt-2 pt-2 border-t border-slate-200">ใบรับสินค้า</p>
+          <p className="text-base font-semibold mt-2 pt-2 border-t border-slate-200">{docTitle}</p>
         </div>
 
         {/* Meta */}
@@ -165,7 +174,7 @@ export default function ReceiptPage() {
           <div className="space-y-1">
             <p><span className="text-slate-400">เลขที่:</span>{' '}
               <span className="font-mono font-medium">{data.receiptNo}</span></p>
-            <p><span className="text-slate-400">ชื่อผู้ขาย:</span> {data.sellerName}</p>
+            <p><span className="text-slate-400">{partyLabel}:</span> {partyName}</p>
           </div>
           <div className="text-right space-y-1">
             <p><span className="text-slate-400">วันที่:</span> {data.date}</p>
@@ -218,7 +227,10 @@ export default function ReceiptPage() {
         </p>
 
         <div className="flex justify-around mt-4">
-          {['ผู้รับ', 'ผู้ส่ง', 'ผู้ตรวจ'].map(label => (
+          {(isSale
+            ? ['ผู้รับเงิน', 'ผู้ซื้อ', 'ผู้ตรวจ']
+            : ['ผู้รับ', 'ผู้ส่ง', 'ผู้ตรวจ']
+          ).map(label => (
             <div key={label} className="text-center w-36">
               <div className="h-12"></div>
               <div className="border-t border-slate-400 pt-1 text-sm text-slate-500">({label})</div>

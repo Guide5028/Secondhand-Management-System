@@ -1,26 +1,31 @@
 import { useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import ProductSearch from '../components/ProductSearch'
+import { saveTransaction } from '../data/transactions'
 
 interface SaleItem {
-  id: number; name: string; weight: string; price: string
+  id: number; code: string; name: string; weight: string; price: string; search: string; open: boolean
 }
 let nextId = 1
-const newItem = (): SaleItem => ({ id: nextId++, name: '', weight: '', price: '' })
+const newItem = (): SaleItem => ({ id: nextId++, code: '', name: '', weight: '', price: '', search: '', open: false })
 
 export default function SalePage() {
-  const [date,       setDate]       = useState(new Date().toISOString().slice(0, 10))
-  const [buyerName,  setBuyerName]  = useState('')
-  const [items,      setItems]      = useState<SaleItem[]>([newItem()])
-  const [images,     setImages]     = useState<{ name: string; url: string }[]>([])
-  const [submitted,  setSubmitted]  = useState(false)
+  const [date,      setDate]      = useState(new Date().toISOString().slice(0, 10))
+  const [buyerName, setBuyerName] = useState('')
+  const [items,     setItems]     = useState<SaleItem[]>([newItem()])
+  const [images,    setImages]    = useState<{ name: string; url: string }[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
+  const navigate = useNavigate()
 
-  const updateItem = (id: number, field: keyof SaleItem, val: string) =>
-    setItems(prev => prev.map(i => i.id === id ? { ...i, [field]: val } : i))
+  const updateItem = (id: number, patch: Partial<SaleItem>) =>
+    setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i))
+
+  const selectProduct = (id: number, p: { code: string; name: string; sellPrice: number }) =>
+    updateItem(id, { code: p.code, name: p.name, price: String(p.sellPrice), search: p.name, open: false })
 
   const addRow    = () => setItems(prev => [...prev, newItem()])
   const removeRow = (id: number) => { if (items.length > 1) setItems(prev => prev.filter(i => i.id !== id)) }
 
-  // อ่านไฟล์รูปเป็น base64 preview
   const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     files.forEach(file => {
@@ -38,31 +43,32 @@ export default function SalePage() {
 
   const total      = items.reduce((s, i) => s + (parseFloat(i.weight) || 0) * (parseFloat(i.price) || 0), 0)
   const validItems = items.filter(i => i.name && parseFloat(i.weight) > 0)
-  const fmt        = (n: number) => new Intl.NumberFormat('th-TH').format(n)
 
   const handleSubmit = () => {
     if (!buyerName)              { alert('กรุณาใส่ชื่อผู้ซื้อ'); return }
     if (validItems.length === 0) { alert('กรุณาเพิ่มรายการสินค้า'); return }
     if (images.length === 0)     { alert('กรุณาแนบหลักฐานใบเสร็จอย่างน้อย 1 รูป'); return }
-    setSubmitted(true)
-  }
 
-  if (submitted) {
-    return (
-      <div className="max-w-2xl">
-        <div className="card p-8 text-center">
-          <div className="text-5xl mb-4">✅</div>
-          <h2 className="text-lg font-semibold text-slate-800 mb-2">บันทึกขายออกสำเร็จ</h2>
-          <p className="text-slate-500 mb-1">ผู้ซื้อ: <strong>{buyerName}</strong></p>
-          <p className="text-slate-500 mb-4">ยอดรวม: <strong className="text-brand-600">฿{fmt(total)}</strong></p>
-          <p className="text-sm text-slate-400 mb-6">แนบหลักฐาน {images.length} รูป</p>
-          <button onClick={() => { setSubmitted(false); setItems([newItem()]); setImages([]); setBuyerName('') }}
-            className="btn-primary">
-            + บันทึกรายการใหม่
-          </button>
-        </div>
-      </div>
-    )
+    const now       = new Date()
+    const receiptNo = `SAL-${now.getTime()}`
+    const txItems   = validItems.map(i => ({
+      code: i.code, name: i.name,
+      weight: parseFloat(i.weight), price: parseFloat(i.price),
+    }))
+    saveTransaction({
+      id: receiptNo, type: 'sale', receiptNo,
+      date, time: now.toTimeString().slice(0, 5),
+      party: buyerName, items: txItems, total,
+    })
+    const thDate = new Date(date).toLocaleDateString('th-TH', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    })
+    sessionStorage.setItem('receipt', JSON.stringify({
+      type: 'sale', receiptNo, date: thDate, buyerName,
+      items: txItems.map(({ name, weight, price }) => ({ name, weight, price })),
+      total,
+    }))
+    navigate('/receipt')
   }
 
   return (
@@ -91,55 +97,47 @@ export default function SalePage() {
       </div>
 
       {/* ตารางรายการ */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-visible">
         <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center">
           <p className="text-sm font-medium text-slate-700">รายการสินค้าที่ขาย</p>
           <button onClick={addRow} className="btn-secondary text-xs py-1 px-3">+ เพิ่มรายการ</button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-slate-400 bg-slate-50 border-b border-slate-100">
-                <th className="px-3 py-2 text-left w-8">#</th>
-                <th className="px-3 py-2 text-left">รายการ</th>
-                <th className="px-3 py-2 text-center w-32">น้ำหนัก (น.)</th>
-                <th className="px-3 py-2 text-center w-28">ราคา/น. (฿)</th>
-                <th className="px-3 py-2 text-right w-28">จำนวนเงิน</th>
-                <th className="px-3 py-2 w-8"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, idx) => {
-                const amount = (parseFloat(item.weight) || 0) * (parseFloat(item.price) || 0)
-                return (
-                  <tr key={item.id} className="border-b border-slate-50 hover:bg-slate-50">
-                    <td className="px-3 py-2 text-center text-slate-400">{idx + 1}</td>
-                    <td className="px-3 py-2">
-                      <input type="text" className="input" placeholder="ชื่อสินค้า"
-                        value={item.name} onChange={e => updateItem(item.id, 'name', e.target.value)} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input type="number" step="0.01" min="0" placeholder="0.00"
-                        className="input text-center font-mono" value={item.weight}
-                        onChange={e => updateItem(item.id, 'weight', e.target.value)} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input type="number" step="0.01" min="0" placeholder="0.00"
-                        className="input text-center font-mono" value={item.price}
-                        onChange={e => updateItem(item.id, 'price', e.target.value)} />
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono font-medium">
-                      {amount > 0 ? amount.toFixed(2) : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <button onClick={() => removeRow(item.id)}
-                        className="text-slate-300 hover:text-red-400 transition-colors">✕</button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+        <div className="p-3 space-y-2">
+          <div className="grid grid-cols-12 gap-2 text-xs text-slate-400 px-2">
+            <div className="col-span-1 text-center">#</div>
+            <div className="col-span-5">รายการสินค้า</div>
+            <div className="col-span-2 text-center">น้ำหนัก (น.)</div>
+            <div className="col-span-2 text-center">ราคา/น. (฿)</div>
+            <div className="col-span-2 text-right">จำนวนเงิน</div>
+          </div>
+          {items.map((item, idx) => {
+            const amount = (parseFloat(item.weight) || 0) * (parseFloat(item.price) || 0)
+            return (
+              <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-slate-50 rounded-lg px-2 py-2">
+                <div className="col-span-1 text-center text-sm text-slate-400">{idx + 1}</div>
+                <div className="col-span-5">
+                  <ProductSearch
+                    search={item.search} code={item.code} name={item.name} open={item.open}
+                    priceField="sellPrice"
+                    onSelect={p => selectProduct(item.id, p)}
+                    onChange={s => updateItem(item.id, { search: s, open: true, code: '', name: '' })}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <input type="number" step="0.01" min="0" placeholder="0.00" className="input text-center font-mono"
+                    value={item.weight} onChange={e => updateItem(item.id, { weight: e.target.value })} />
+                </div>
+                <div className="col-span-2">
+                  <input type="number" step="0.01" min="0" placeholder="0.00" className="input text-center font-mono"
+                    value={item.price} onChange={e => updateItem(item.id, { price: e.target.value })} />
+                </div>
+                <div className="col-span-2 flex items-center justify-end gap-2">
+                  <span className="font-mono text-sm font-medium">{amount > 0 ? amount.toFixed(2) : '—'}</span>
+                  <button onClick={() => removeRow(item.id)} className="text-slate-300 hover:text-red-400 transition-colors">✕</button>
+                </div>
+              </div>
+            )
+          })}
         </div>
         <div className="px-5 py-4 border-t border-slate-100 flex justify-between items-center bg-slate-50">
           <span className="text-sm text-slate-400">{validItems.length} รายการ</span>

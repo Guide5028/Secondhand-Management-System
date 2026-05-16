@@ -1,397 +1,344 @@
 import { useState } from 'react'
+import { loadTransactions } from '../data/transactions'
 
-interface TxItem {
-  name:   string
-  weight: number
-  price:  number
+const STORAGE_KEY = 'kankrong_daily'
+
+interface DailyRecord {
+  date:     string
+  sale:     number
+  purchase: number
+  labor:    number  // ค่าแรง
+  fuel:     number  // ค่าน้ำมัน
+  utility:  number  // สาธารณูปโภค
+  rent:     number  // ค่าเช่า
+  misc:     number  // เบ็ดเตล็ด
+  other:    number  // คชจ.อื่นๆ
+  vehicle:  number  // งวดรถ
+  note:     string
 }
 
-interface PurchaseTx {
-  receiptNo: string
-  time:      string
-  seller:    string
-  items:     TxItem[]
+const BLANK: Omit<DailyRecord, 'date'> = {
+  sale: 0, purchase: 0, labor: 0, fuel: 0,
+  utility: 0, rent: 0, misc: 0, other: 0, vehicle: 0, note: '',
 }
 
-interface SaleTx {
-  saleNo: string
-  time:   string
-  buyer:  string
-  items:  TxItem[]
+const FIXED_COSTS = [
+  { label: 'งวดรถโฟลค์ลิฟ',     amount: 10109 },
+  { label: 'งวดรถหกล้อ ISUZU',   amount: 13000 },
+  { label: 'งวดรถกระบะ REVO',    amount: 11430 },
+  { label: 'ค่าเช่า',            amount: 20000 },
+  { label: 'ค่าตู้แดง สภ.',      amount: 500   },
+  { label: 'Internet (AIS)',      amount: 632   },
+  { label: 'ค่าขยะ อบต.',        amount: 500   },
+]
+
+function loadRecords(): DailyRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {}
+  return []
 }
 
-interface Expense {
-  label:  string
-  amount: number
+function saveRecords(records: DailyRecord[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
 }
 
-interface DayData {
-  purchases: PurchaseTx[]
-  sales:     SaleTx[]
-  expenses:  Expense[]
+function totalExp(r: DailyRecord) {
+  return r.labor + r.fuel + r.utility + r.rent + r.misc + r.other + r.vehicle
 }
 
-const MOCK: Record<string, DayData> = {
-  '2026-05-16': {
-    purchases: [
-      {
-        receiptNo: 'REC-1747356001',
-        time: '08:42',
-        seller: 'นายสมชาย ใจดี',
-        items: [
-          { name: 'ทองแดงปอกสวย1', weight: 5.2,  price: 386 },
-          { name: 'ทองเหลือง',      weight: 12.5, price: 200 },
-        ],
-      },
-      {
-        receiptNo: 'REC-1747356002',
-        time: '10:15',
-        seller: 'นางสาวมาลี วงศ์ดี',
-        items: [
-          { name: 'เหล็กหนา',      weight: 85.0, price: 25 },
-          { name: 'มีเนียมสายไฟ', weight: 15.0, price: 80 },
-        ],
-      },
-      {
-        receiptNo: 'REC-1747356003',
-        time: '11:50',
-        seller: 'นายวิชัย สุขสมบูรณ์',
-        items: [
-          { name: 'พลาสติกใส', weight: 45.0,  price: 8 },
-          { name: 'กระดาษลัง', weight: 120.0, price: 3 },
-        ],
-      },
-      {
-        receiptNo: 'REC-1747356004',
-        time: '14:30',
-        seller: 'นายประสิทธิ์ มั่งมี',
-        items: [
-          { name: 'มีเนียมกระป๋อง', weight: 32.5, price: 71 },
-          { name: 'แบตเล็ก',        weight: 18.0, price: 26 },
-        ],
-      },
-    ],
-    sales: [
-      {
-        saleNo: 'SAL-1747390001',
-        time:   '15:30',
-        buyer:  'บริษัท โลหะรีไซเคิล จำกัด',
-        items: [
-          { name: 'ทองแดง (รวม)',  weight: 25.0,  price: 420 },
-          { name: 'มีเนียม (รวม)', weight: 180.0, price: 72  },
-        ],
-      },
-    ],
-    expenses: [
-      { label: 'น้ำมันรถ', amount: 300 },
-    ],
-  },
-  '2026-05-15': {
-    purchases: [
-      {
-        receiptNo: 'REC-1747269001',
-        time: '09:10',
-        seller: 'นายสุรชัย ทองดี',
-        items: [
-          { name: 'เหล็กหนา',  weight: 210.0, price: 25 },
-          { name: 'เหล็กบาง',  weight: 95.0,  price: 6  },
-          { name: 'สังกะสี',   weight: 40.0,  price: 5  },
-        ],
-      },
-      {
-        receiptNo: 'REC-1747269002',
-        time: '13:00',
-        seller: 'นางจันทร์ แก้วมณี',
-        items: [
-          { name: 'ทองแดงช็อต2', weight: 8.5, price: 376 },
-          { name: 'ตะกั่ว',      weight: 22.0, price: 35  },
-        ],
-      },
-    ],
-    sales: [
-      {
-        saleNo: 'SAL-1747303001',
-        time:   '16:00',
-        buyer:  'ร้านเหล็กชัยภูมิ',
-        items: [
-          { name: 'เหล็กหนา (รวม)', weight: 450.0, price: 27 },
-          { name: 'เหล็กบาง (รวม)', weight: 280.0, price: 7  },
-        ],
-      },
-    ],
-    expenses: [
-      { label: 'ค่าแรงคนงาน', amount: 600 },
-      { label: 'น้ำมันรถ',   amount: 200 },
-    ],
-  },
-  '2026-05-14': {
-    purchases: [
-      {
-        receiptNo: 'REC-1747182001',
-        time: '08:20',
-        seller: 'นายบุญมา ศรีวิลัย',
-        items: [
-          { name: 'กระดาษลัง',   weight: 280.0, price: 3 },
-          { name: 'กระดาษเศษ',   weight: 155.0, price: 2 },
-          { name: 'พลาสติกสี',   weight: 95.0,  price: 4 },
-        ],
-      },
-      {
-        receiptNo: 'REC-1747182002',
-        time: '10:45',
-        seller: 'นางสาวพิมพ์ใจ รักดี',
-        items: [
-          { name: 'แบตใหญ่', weight: 35.0, price: 27 },
-          { name: 'แบตทรู',  weight: 12.0, price: 23 },
-        ],
-      },
-      {
-        receiptNo: 'REC-1747182003',
-        time: '15:20',
-        seller: 'นายสำราญ ปราโมทย์',
-        items: [
-          { name: 'มีเนียมบาง', weight: 55.0, price: 64 },
-          { name: 'มู่ลี่',     weight: 28.0, price: 30 },
-        ],
-      },
-    ],
-    sales: [],
-    expenses: [
-      { label: 'ค่าไฟฟ้า', amount: 1080 },
-    ],
-  },
+function profit(r: DailyRecord) {
+  return r.sale - r.purchase - totalExp(r)
 }
 
-function txTotal(items: TxItem[]) {
-  return items.reduce((s, i) => s + i.weight * i.price, 0)
-}
+const fmt = (n: number) =>
+  n === 0 ? '—' : new Intl.NumberFormat('th-TH').format(Math.round(n))
+
+const thDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+
+const MONTH_NAMES = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
 export default function DailyPLPage() {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const today = new Date().toISOString().slice(0, 10)
+  const [year,  setYear]  = useState(new Date().getFullYear())
+  const [month, setMonth] = useState(new Date().getMonth() + 1)
+  const [records, setRecords] = useState<DailyRecord[]>(loadRecords)
+  const [draft, setDraft] = useState<DailyRecord | null>(null)
 
-  const fmt = (n: number) =>
-    new Intl.NumberFormat('th-TH', { maximumFractionDigits: 0 }).format(n)
+  const prefix = `${year}-${String(month).padStart(2, '0')}`
+  const monthRecords = records
+    .filter(r => r.date.startsWith(prefix))
+    .sort((a, b) => a.date.localeCompare(b.date))
 
-  const data = MOCK[date]
-
-  const totalPurchases = data
-    ? data.purchases.reduce((s, tx) => s + txTotal(tx.items), 0)
-    : 0
-  const totalSales = data
-    ? data.sales.reduce((s, tx) => s + txTotal(tx.items), 0)
-    : 0
-  const totalExpenses = data
-    ? data.expenses.reduce((s, e) => s + e.amount, 0)
-    : 0
-  const grossProfit = totalSales - totalPurchases
-  const netProfit   = grossProfit - totalExpenses
-
-  const thDate = new Date(date).toLocaleDateString('th-TH', {
-    year: 'numeric', month: 'long', day: 'numeric',
-  })
-
-  const prevDay = () => {
-    const d = new Date(date)
-    d.setDate(d.getDate() - 1)
-    setDate(d.toISOString().slice(0, 10))
+  const openAdd = () => {
+    const txs      = loadTransactions().filter(t => t.date === today)
+    const sale     = txs.filter(t => t.type === 'sale').reduce((s, t) => s + t.total, 0)
+    const purchase = txs.filter(t => t.type === 'purchase').reduce((s, t) => s + t.total, 0)
+    setDraft({ date: today, ...BLANK, sale, purchase })
   }
-  const nextDay = () => {
-    const d = new Date(date)
-    d.setDate(d.getDate() + 1)
-    setDate(d.toISOString().slice(0, 10))
+  const openEdit = (r: DailyRecord) => setDraft({ ...r })
+  const closeModal = () => setDraft(null)
+
+  const saveModal = () => {
+    if (!draft) return
+    const next = [...records.filter(r => r.date !== draft.date), draft]
+      .sort((a, b) => a.date.localeCompare(b.date))
+    setRecords(next)
+    saveRecords(next)
+    closeModal()
   }
+
+  const deleteRecord = (date: string) => {
+    if (!confirm('ลบรายการวันนี้?')) return
+    const next = records.filter(r => r.date !== date)
+    setRecords(next)
+    saveRecords(next)
+  }
+
+  const setField = (field: keyof DailyRecord, val: string | number) =>
+    setDraft(prev => prev ? { ...prev, [field]: val } : prev)
+
+  const totSale     = monthRecords.reduce((s, r) => s + r.sale, 0)
+  const totPurchase = monthRecords.reduce((s, r) => s + r.purchase, 0)
+  const totExp      = monthRecords.reduce((s, r) => s + totalExp(r), 0)
+  const totProfit   = totSale - totPurchase - totExp
+
+  const fixedTotal  = FIXED_COSTS.reduce((s, f) => s + f.amount, 0)
 
   return (
-    <div className="max-w-5xl space-y-5">
+    <div className="space-y-5">
 
-      {/* Header + date nav */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-slate-800">P&L รายวัน</h2>
-          <p className="text-sm text-slate-400 mt-0.5">{thDate}</p>
+          <p className="text-sm text-slate-400 mt-0.5">บันทึกรายได้และค่าใช้จ่ายประจำวัน</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={prevDay} className="btn-secondary px-3 py-1.5 text-sm">← ก่อนหน้า</button>
-          <input
-            type="date"
-            className="input text-sm w-auto"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-          />
-          <button onClick={nextDay} className="btn-secondary px-3 py-1.5 text-sm">ถัดไป →</button>
-        </div>
+        <button onClick={openAdd} className="btn-primary flex items-center gap-2 text-sm">
+          + เพิ่มรายวัน
+        </button>
+      </div>
+
+      {/* Month selector */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <select className="input max-w-[120px] text-sm" value={month}
+          onChange={e => setMonth(Number(e.target.value))}>
+          {MONTH_NAMES.map((m, i) => (
+            <option key={i + 1} value={i + 1}>{m}</option>
+          ))}
+        </select>
+        <select className="input max-w-[100px] text-sm" value={year}
+          onChange={e => setYear(Number(e.target.value))}>
+          {[2025, 2026, 2027].map(y => (
+            <option key={y} value={y}>{y + 543}</option>
+          ))}
+        </select>
+        <span className="text-xs text-slate-400">{monthRecords.length} วัน</span>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card p-4">
-          <p className="text-xs text-slate-400 mb-1">ซื้อเข้า</p>
-          <p className="text-2xl font-semibold text-slate-700 font-mono">฿{fmt(totalPurchases)}</p>
-          <p className="text-xs text-slate-400 mt-1">
-            {data ? data.purchases.length : 0} ใบรับ
-          </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: 'ยอดขายรวม',    val: totSale,     color: 'text-slate-800' },
+          { label: 'ยอดซื้อรวม',   val: totPurchase, color: 'text-slate-800' },
+          { label: 'ค่าใช้จ่ายรวม', val: totExp,      color: 'text-slate-800' },
+          { label: 'กำไร/ขาดทุน',  val: totProfit,   color: totProfit >= 0 ? 'text-green-600' : 'text-red-500' },
+        ].map(c => (
+          <div key={c.label} className="card p-4">
+            <p className="text-xs text-slate-400 mb-1">{c.label}</p>
+            <p className={`text-xl font-semibold font-mono ${c.color}`}>
+              {c.val >= 0 && c.label === 'กำไร/ขาดทุน' ? '+' : ''}฿{new Intl.NumberFormat('th-TH').format(c.val)}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-5">
+
+        {/* Main table */}
+        <div className="flex-1 card overflow-x-auto min-w-0">
+          {monthRecords.length === 0 ? (
+            <div className="py-16 text-center text-slate-400 text-sm">
+              <p className="text-3xl mb-2">📋</p>
+              <p>ยังไม่มีข้อมูล — กด "เพิ่มรายวัน" เพื่อเริ่มบันทึก</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm" style={{ minWidth: '820px' }}>
+              <thead>
+                <tr className="text-xs text-slate-400 bg-slate-50 border-b border-slate-100">
+                  <th className="px-3 py-2 text-left w-20">วันที่</th>
+                  <th className="px-3 py-2 text-right">ยอดขาย</th>
+                  <th className="px-3 py-2 text-right">ยอดซื้อ</th>
+                  <th className="px-3 py-2 text-right">ค่าแรง</th>
+                  <th className="px-3 py-2 text-right">น้ำมัน</th>
+                  <th className="px-3 py-2 text-right">สาธา.</th>
+                  <th className="px-3 py-2 text-right">ค่าเช่า</th>
+                  <th className="px-3 py-2 text-right">เบ็ดฯ</th>
+                  <th className="px-3 py-2 text-right">คชจ.อื่น</th>
+                  <th className="px-3 py-2 text-right">งวดรถ</th>
+                  <th className="px-3 py-2 text-right">กำไร</th>
+                  <th className="px-3 py-2 w-14"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthRecords.map(r => {
+                  const pl = profit(r)
+                  return (
+                    <tr key={r.date} className="border-b border-slate-50 hover:bg-slate-50 text-xs">
+                      <td className="px-3 py-2 font-medium text-slate-700">
+                        {thDate(r.date)}
+                        {r.note && <span className="ml-1 text-slate-400">({r.note})</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono">{fmt(r.sale)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{fmt(r.purchase)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{fmt(r.labor)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{fmt(r.fuel)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{fmt(r.utility)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{fmt(r.rent)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{fmt(r.misc)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{fmt(r.other)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500">{fmt(r.vehicle)}</td>
+                      <td className={`px-3 py-2 text-right font-mono font-semibold ${pl >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        {pl >= 0 ? '+' : ''}{fmt(pl)}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <div className="flex gap-1 justify-center">
+                          <button onClick={() => openEdit(r)}
+                            className="text-slate-400 hover:text-brand-600 transition-colors">✏️</button>
+                          <button onClick={() => deleteRecord(r.date)}
+                            className="text-slate-300 hover:text-red-400 transition-colors">✕</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-50 font-semibold text-xs border-t border-slate-200">
+                  <td className="px-3 py-2 text-slate-600">รวม</td>
+                  <td className="px-3 py-2 text-right font-mono">{new Intl.NumberFormat('th-TH').format(totSale)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{new Intl.NumberFormat('th-TH').format(totPurchase)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-slate-500">
+                    {new Intl.NumberFormat('th-TH').format(monthRecords.reduce((s,r)=>s+r.labor,0))}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-slate-500">
+                    {new Intl.NumberFormat('th-TH').format(monthRecords.reduce((s,r)=>s+r.fuel,0))}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-slate-500">
+                    {new Intl.NumberFormat('th-TH').format(monthRecords.reduce((s,r)=>s+r.utility,0))}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-slate-500">
+                    {new Intl.NumberFormat('th-TH').format(monthRecords.reduce((s,r)=>s+r.rent,0))}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-slate-500">
+                    {new Intl.NumberFormat('th-TH').format(monthRecords.reduce((s,r)=>s+r.misc,0))}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-slate-500">
+                    {new Intl.NumberFormat('th-TH').format(monthRecords.reduce((s,r)=>s+r.other,0))}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-slate-500">
+                    {new Intl.NumberFormat('th-TH').format(monthRecords.reduce((s,r)=>s+r.vehicle,0))}
+                  </td>
+                  <td className={`px-3 py-2 text-right font-mono ${totProfit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {totProfit >= 0 ? '+' : ''}{new Intl.NumberFormat('th-TH').format(totProfit)}
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          )}
         </div>
-        <div className="card p-4">
-          <p className="text-xs text-slate-400 mb-1">ขายออก</p>
-          <p className="text-2xl font-semibold text-blue-600 font-mono">฿{fmt(totalSales)}</p>
-          <p className="text-xs text-slate-400 mt-1">
-            {data ? data.sales.length : 0} รายการขาย
-          </p>
-        </div>
-        <div className="card p-4">
-          <p className="text-xs text-slate-400 mb-1">กำไรขั้นต้น</p>
-          <p className={`text-2xl font-semibold font-mono ${grossProfit >= 0 ? 'text-brand-600' : 'text-red-500'}`}>
-            ฿{fmt(grossProfit)}
-          </p>
-          <p className="text-xs text-slate-400 mt-1">
-            {totalSales > 0 ? `margin ${((grossProfit / totalSales) * 100).toFixed(1)}%` : '—'}
-          </p>
-        </div>
-        <div className="card p-4">
-          <p className="text-xs text-slate-400 mb-1">ค่าใช้จ่าย</p>
-          <p className="text-2xl font-semibold text-slate-700 font-mono">฿{fmt(totalExpenses)}</p>
-          <p className="text-xs text-slate-400 mt-1">
-            {data ? data.expenses.map(e => e.label).join(', ') || '—' : '—'}
-          </p>
+
+        {/* Fixed costs sidebar */}
+        <div className="w-full lg:w-60 shrink-0">
+          <div className="card p-4">
+            <p className="text-xs font-semibold text-slate-600 mb-3">ค่าใช้จ่ายประจำ/เดือน</p>
+            <div className="space-y-2">
+              {FIXED_COSTS.map(f => (
+                <div key={f.label} className="flex justify-between items-center text-xs">
+                  <span className="text-slate-500">{f.label}</span>
+                  <span className="font-mono font-medium text-slate-700">
+                    {new Intl.NumberFormat('th-TH').format(f.amount)}
+                  </span>
+                </div>
+              ))}
+              <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-xs font-semibold">
+                <span className="text-slate-700">รวม</span>
+                <span className="font-mono text-brand-700">
+                  {new Intl.NumberFormat('th-TH').format(fixedTotal)}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {!data ? (
-        <div className="card p-10 text-center">
-          <p className="text-slate-400 text-sm">ไม่มีข้อมูลสำหรับวันที่นี้</p>
+      {/* Modal */}
+      {draft && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="text-sm font-semibold text-slate-800">บันทึกรายวัน</h3>
+              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
+            </div>
+            <div className="p-6 space-y-3 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">วันที่</label>
+                <input type="date" className="input text-sm"
+                  value={draft.date}
+                  onChange={e => setField('date', e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ['sale',     'ยอดขาย (฿) — ดึงจากรายการขาย'],
+                  ['purchase', 'ยอดซื้อ (฿) — ดึงจากรายการซื้อ'],
+                  ['labor',    'ค่าแรง (฿)'],
+                  ['fuel',     'ค่าน้ำมัน (฿)'],
+                  ['utility',  'สาธารณูปโภค (฿)'],
+                  ['rent',     'ค่าเช่า (฿)'],
+                  ['misc',     'เบ็ดเตล็ด (฿)'],
+                  ['other',    'คชจ.อื่นๆ (฿)'],
+                  ['vehicle',  'งวดรถ (฿)'],
+                ] as [keyof DailyRecord, string][]).map(([field, label]) => (
+                  <div key={field}>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
+                    <input type="number" min="0" step="1" className="input text-sm font-mono"
+                      value={(draft[field] as number) || ''}
+                      placeholder="0"
+                      onChange={e => setField(field, parseFloat(e.target.value) || 0)} />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">หมายเหตุ</label>
+                <input type="text" className="input text-sm"
+                  value={draft.note}
+                  placeholder="เช่น หยุด, ลูกค้าพิเศษ..."
+                  onChange={e => setField('note', e.target.value)} />
+              </div>
+
+              {/* preview */}
+              <div className="bg-slate-50 rounded-lg px-4 py-3 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">ค่าใช้จ่ายรวม</span>
+                  <span className="font-mono font-medium">฿{new Intl.NumberFormat('th-TH').format(totalExp(draft))}</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span>กำไร/ขาดทุน</span>
+                  <span className={`font-mono ${profit(draft) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {profit(draft) >= 0 ? '+' : ''}฿{new Intl.NumberFormat('th-TH').format(profit(draft))}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button onClick={closeModal} className="btn-secondary text-sm">ยกเลิก</button>
+              <button onClick={saveModal} className="btn-primary text-sm">บันทึก</button>
+            </div>
+          </div>
         </div>
-      ) : (
-        <>
-          {/* Purchases + Sales panels */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
-            {/* ซื้อเข้า */}
-            <div className="card">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-700">ซื้อเข้า</h3>
-                <span className="text-xs text-slate-400">{data.purchases.length} รายการ</span>
-              </div>
-              {data.purchases.length === 0 ? (
-                <p className="px-5 py-8 text-center text-sm text-slate-400">ไม่มีรายการซื้อ</p>
-              ) : (
-                <div className="divide-y divide-slate-50">
-                  {data.purchases.map(tx => {
-                    const total = txTotal(tx.items)
-                    return (
-                      <div key={tx.receiptNo} className="px-5 py-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="text-sm font-medium text-slate-800">{tx.seller}</p>
-                            <p className="text-xs text-slate-400 mt-0.5">
-                              {tx.time} · {tx.receiptNo}
-                            </p>
-                          </div>
-                          <span className="font-mono text-sm font-semibold text-slate-700">
-                            ฿{fmt(total)}
-                          </span>
-                        </div>
-                        <div className="mt-2 space-y-0.5">
-                          {tx.items.map((it, i) => (
-                            <div key={i} className="flex justify-between text-xs text-slate-500">
-                              <span>{it.name}</span>
-                              <span className="font-mono">
-                                {it.weight.toLocaleString('th-TH', { maximumFractionDigits: 1 })} น. × ฿{it.price}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-              <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-between text-sm">
-                <span className="text-slate-500">รวมซื้อเข้า</span>
-                <span className="font-mono font-semibold text-slate-700">฿{fmt(totalPurchases)}</span>
-              </div>
-            </div>
-
-            {/* ขายออก */}
-            <div className="card">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-700">ขายออก</h3>
-                <span className="text-xs text-slate-400">{data.sales.length} รายการ</span>
-              </div>
-              {data.sales.length === 0 ? (
-                <p className="px-5 py-8 text-center text-sm text-slate-400">ไม่มีรายการขาย</p>
-              ) : (
-                <div className="divide-y divide-slate-50">
-                  {data.sales.map(tx => {
-                    const total = txTotal(tx.items)
-                    return (
-                      <div key={tx.saleNo} className="px-5 py-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="text-sm font-medium text-slate-800">{tx.buyer}</p>
-                            <p className="text-xs text-slate-400 mt-0.5">
-                              {tx.time} · {tx.saleNo}
-                            </p>
-                          </div>
-                          <span className="font-mono text-sm font-semibold text-blue-600">
-                            ฿{fmt(total)}
-                          </span>
-                        </div>
-                        <div className="mt-2 space-y-0.5">
-                          {tx.items.map((it, i) => (
-                            <div key={i} className="flex justify-between text-xs text-slate-500">
-                              <span>{it.name}</span>
-                              <span className="font-mono">
-                                {it.weight.toLocaleString('th-TH', { maximumFractionDigits: 1 })} น. × ฿{it.price}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-              <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-between text-sm">
-                <span className="text-slate-500">รวมขายออก</span>
-                <span className="font-mono font-semibold text-blue-600">฿{fmt(totalSales)}</span>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Net P&L summary */}
-          <div className="card p-5">
-            <h3 className="text-sm font-semibold text-slate-700 mb-4">สรุป P&L ประจำวัน</h3>
-            <div className="space-y-2 text-sm max-w-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-500">ยอดขายออก</span>
-                <span className="font-mono font-medium">฿{fmt(totalSales)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">ยอดซื้อเข้า</span>
-                <span className="font-mono text-red-500">− ฿{fmt(totalPurchases)}</span>
-              </div>
-              <div className="flex justify-between border-t border-slate-100 pt-2">
-                <span className="text-slate-600 font-medium">กำไรขั้นต้น</span>
-                <span className={`font-mono font-semibold ${grossProfit >= 0 ? 'text-brand-600' : 'text-red-500'}`}>
-                  ฿{fmt(grossProfit)}
-                </span>
-              </div>
-              {data.expenses.map((e, i) => (
-                <div key={i} className="flex justify-between">
-                  <span className="text-slate-500">{e.label}</span>
-                  <span className="font-mono text-red-400">− ฿{fmt(e.amount)}</span>
-                </div>
-              ))}
-              <div className="flex justify-between border-t-2 border-slate-200 pt-2 mt-2">
-                <span className="font-semibold text-slate-800">กำไรสุทธิ</span>
-                <span className={`font-mono font-bold text-lg ${netProfit >= 0 ? 'text-brand-600' : 'text-red-500'}`}>
-                  ฿{fmt(netProfit)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </>
       )}
 
     </div>

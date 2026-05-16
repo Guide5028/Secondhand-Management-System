@@ -1,6 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadProducts } from '../data/products'
+import ProductSearch from '../components/ProductSearch'
+import { saveTransaction } from '../data/transactions'
 
 function getCatThai(code: string): string {
   const n = parseInt(code.replace('CR', ''))
@@ -35,60 +37,19 @@ interface Item {
 let nextId = 1
 const newItem = (): Item => ({ id: nextId++, code: '', name: '', weight: '', price: '', search: '', open: false })
 
-function ProductSearch({ item, onSelect, onChange }: {
-  item: Item
-  onSelect: (p: typeof PRODUCTS[0]) => void
-  onChange: (s: string) => void
-}) {
-  const wrapRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
-        onChange(item.name || '')
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [item.name])
-
-  const filtered = item.search
-    ? PRODUCTS.filter(p => p.name.includes(item.search) || p.code.toLowerCase().includes(item.search.toLowerCase())).slice(0, 8)
-    : []
-
-  return (
-    <div ref={wrapRef} className="relative w-full">
-      <input type="text" className="input" autoComplete="off"
-        placeholder="พิมพ์ชื่อหรือรหัส เช่น เหล็ก, CR32..."
-        value={item.search}
-        onChange={e => onChange(e.target.value)} />
-      {item.name && item.search === item.name && (
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-slate-400">{item.code}</span>
-      )}
-      {item.open && filtered.length > 0 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
-          {filtered.map(p => (
-            <button key={p.code} type="button" onMouseDown={() => onSelect(p)}
-              className="w-full flex justify-between items-center px-3 py-2 hover:bg-brand-50 text-sm text-left">
-              <span><span className="text-xs font-mono text-slate-400 mr-2">{p.code}</span>{p.name}</span>
-              <span className="text-xs font-medium text-brand-600">฿{p.refPrice}/น.</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 export default function PurchasePage() {
   const navigate = useNavigate()
-  const [tab,    setTab]    = useState<'entry' | 'summary'>('entry')
-  const [date,   setDate]   = useState(new Date().toISOString().slice(0, 10))
-  const [items,  setItems]  = useState<Item[]>([newItem()])
+  const [tab,        setTab]        = useState<'entry' | 'summary'>('entry')
+  const [date,       setDate]       = useState(new Date().toISOString().slice(0, 10))
+  const [sellerName, setSellerName] = useState('')
+  const [items,      setItems]      = useState<Item[]>([newItem()])
   const [catFilter, setCatFilter] = useState('ทั้งหมด')
 
   const updateItem = (id: number, patch: Partial<Item>) =>
     setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i))
 
-  const selectProduct = (id: number, p: typeof PRODUCTS[0]) =>
+  const selectProduct = (id: number, p: { code: string; name: string; refPrice: number }) =>
     updateItem(id, { code: p.code, name: p.name, price: String(p.refPrice), search: p.name, open: false })
 
   const addRow    = () => setItems(prev => [...prev, newItem()])
@@ -99,10 +60,22 @@ export default function PurchasePage() {
 
   const handleSubmit = () => {
     if (validItems.length === 0) { alert('กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ'); return }
+    const now       = new Date()
+    const receiptNo = `REC-${now.getTime()}`
+    const party     = sellerName.trim() || 'ลูกค้าทั่วไป'
+    const txItems   = validItems.map(i => ({
+      code: i.code, name: i.name,
+      weight: parseFloat(i.weight), price: parseFloat(i.price),
+    }))
+    saveTransaction({
+      id: receiptNo, type: 'purchase', receiptNo,
+      date, time: now.toTimeString().slice(0, 5),
+      party, items: txItems, total,
+    })
     const thDate = new Date(date).toLocaleDateString('th-TH', { year: 'numeric', month: '2-digit', day: '2-digit' })
     sessionStorage.setItem('receipt', JSON.stringify({
-      date: thDate, receiptNo: `REC-${Date.now()}`, sellerName: 'ลูกค้าทั่วไป',
-      items: validItems.map(i => ({ name: i.name, weight: parseFloat(i.weight), price: parseFloat(i.price) })),
+      date: thDate, receiptNo, sellerName: party,
+      items: txItems.map(({ name, weight, price }) => ({ name, weight, price })),
       total,
     }))
     navigate('/receipt')
@@ -135,8 +108,17 @@ export default function PurchasePage() {
       {tab === 'entry' && (
         <>
           <div className="card p-5">
-            <label className="block text-sm font-medium text-slate-600 mb-1">วันที่</label>
-            <input type="date" className="input max-w-xs" value={date} onChange={e => setDate(e.target.value)} />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">วันที่</label>
+                <input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">ชื่อผู้ขาย</label>
+                <input type="text" className="input" placeholder="ลูกค้าทั่วไป"
+                  value={sellerName} onChange={e => setSellerName(e.target.value)} />
+              </div>
+            </div>
           </div>
 
           <div className="card overflow-visible">
@@ -158,9 +140,12 @@ export default function PurchasePage() {
                   <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-slate-50 rounded-lg px-2 py-2">
                     <div className="col-span-1 text-center text-sm text-slate-400">{idx + 1}</div>
                     <div className="col-span-5">
-                      <ProductSearch item={item}
+                      <ProductSearch
+                        search={item.search} code={item.code} name={item.name} open={item.open}
+                        priceField="refPrice"
                         onSelect={p => selectProduct(item.id, p)}
-                        onChange={s => updateItem(item.id, { search: s, open: true, code: '', name: '' })} />
+                        onChange={s => updateItem(item.id, { search: s, open: true, code: '', name: '' })}
+                      />
                     </div>
                     <div className="col-span-2">
                       <input type="number" step="0.01" min="0" placeholder="0.00" className="input text-center font-mono"

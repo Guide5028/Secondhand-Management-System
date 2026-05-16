@@ -86,6 +86,13 @@ export const DEFAULT_PRODUCTS: Product[] = [
   { code: 'CR76', name: 'ข้าวแห้ง',                 refPrice: 3,   sellPrice: 4   },
   { code: 'CR77', name: 'เพทสกรีน',                 refPrice: 2,   sellPrice: 3   },
   { code: 'CR78', name: 'ถังแก๊ส',                  refPrice: 10,  sellPrice: 12  },
+  { code: 'CR79', name: 'มอไซค์',                   refPrice: 15,  sellPrice: 18  },
+  { code: 'CR80', name: 'ของแกะ',                   refPrice: 5,   sellPrice: 6   },
+  { code: 'CR81', name: 'เครื่องตัดหญ้า',           refPrice: 15,  sellPrice: 18  },
+  { code: 'CR82', name: 'อาชา',                     refPrice: 5,   sellPrice: 6   },
+  { code: 'CR83', name: 'กระดาษสี',                 refPrice: 2,   sellPrice: 3   },
+  { code: 'CR84', name: 'พลาสติกรวม',               refPrice: 4,   sellPrice: 5   },
+  { code: 'CR86', name: 'ซีดี',                     refPrice: 3,   sellPrice: 4   },
 ]
 
 export function loadProducts(): Product[] {
