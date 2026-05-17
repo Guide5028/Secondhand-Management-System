@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ProductSearch from '../components/ProductSearch'
-import { saveTransaction } from '../data/transactions'
+import { useProducts } from '../hooks/useProducts'
+import { useSaveTransaction } from '../hooks/useTransactions'
+import type { Transaction } from '../data/transactions'
 
 interface SaleItem {
   id: number; code: string; name: string; weight: string; price: string; search: string; open: boolean
@@ -15,6 +17,9 @@ export default function SalePage() {
   const [items,     setItems]     = useState<SaleItem[]>([newItem()])
   const navigate = useNavigate()
 
+  const { data: products = [] } = useProducts()
+  const saveTx = useSaveTransaction()
+
   const updateItem = (id: number, patch: Partial<SaleItem>) =>
     setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i))
 
@@ -27,7 +32,7 @@ export default function SalePage() {
   const total      = items.reduce((s, i) => s + (parseFloat(i.weight) || 0) * (parseFloat(i.price) || 0), 0)
   const validItems = items.filter(i => i.name && parseFloat(i.weight) > 0)
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!buyerName)              { alert('กรุณาใส่ชื่อผู้ซื้อ'); return }
     if (validItems.length === 0) { alert('กรุณาเพิ่มรายการสินค้า'); return }
 
@@ -37,11 +42,12 @@ export default function SalePage() {
       code: i.code, name: i.name,
       weight: parseFloat(i.weight), price: parseFloat(i.price),
     }))
-    saveTransaction({
+    const tx: Transaction = {
       id: receiptNo, type: 'sale', receiptNo,
       date, time: now.toTimeString().slice(0, 5),
       party: buyerName, items: txItems, total,
-    })
+    }
+    await saveTx.mutateAsync(tx)
     const thDate = new Date(date).toLocaleDateString('th-TH', {
       year: 'numeric', month: '2-digit', day: '2-digit',
     })
@@ -99,6 +105,7 @@ export default function SalePage() {
                 <div className="col-span-1 text-center text-sm text-slate-400">{idx + 1}</div>
                 <div className="col-span-5">
                   <ProductSearch
+                    products={products}
                     search={item.search} code={item.code} name={item.name} open={item.open}
                     priceField="sellPrice"
                     onSelect={p => selectProduct(item.id, p)}
@@ -132,9 +139,9 @@ export default function SalePage() {
       </div>
 
       <button onClick={handleSubmit}
-        disabled={!buyerName || validItems.length === 0}
+        disabled={!buyerName || validItems.length === 0 || saveTx.isPending}
         className="btn-primary w-full py-3 text-base flex items-center justify-center gap-2">
-        💾 บันทึกขายออก
+        {saveTx.isPending ? '⏳ กำลังบันทึก…' : '💾 บันทึกขายออก'}
       </button>
 
     </div>

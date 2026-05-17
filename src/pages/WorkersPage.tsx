@@ -411,121 +411,409 @@ function AttendanceTab() {
   )
 }
 
-// ─── Monthly Receipt Print ─────────────────────────────────────
+// ─── Pay Slip Helper ──────────────────────────────────────────
 
-function printWorkerReceipt(
-  worker: Worker,
-  ym: string,
+interface ExtraDeduction { label: string; amount: string }
+
+interface PaySlipConfig {
+  worker:          Worker
+  dateFrom:        string
+  dateTo:          string
+  extraDeductions: ExtraDeduction[]
+  payerName:       string
+}
+
+function calcWageRange(worker: Worker, dateFrom: string, dateTo: string, attendance: AttendanceRecord[]) {
+  const recs = attendance.filter(r =>
+    r.workerId === worker.id && r.date >= dateFrom && r.date <= dateTo
+  )
+  const chaisilaRecs = recs.filter(r => r.shop === 'chaisila')
+  const fullDays   = chaisilaRecs.filter(r => r.dayType === 'full').length
+  const halfDays   = chaisilaRecs.filter(r => r.dayType === 'half').length
+  const mvpDays    = recs.filter(r => r.shop === 'mvp' && (r.dayType === 'full' || r.dayType === 'half')).length
+  const absentDays = recs.filter(r => r.dayType === 'absent' || r.dayType === 'holiday').length
+  const wage       = fullDays * worker.dailyWage + halfDays * (worker.dailyWage / 2)
+  return { recs, fullDays, halfDays, mvpDays, absentDays, wage }
+}
+
+function doPrintPaySlip(
+  cfg: PaySlipConfig,
   attendance: AttendanceRecord[],
   advances: AdvanceRecord[],
 ) {
-  const MONTH_NAMES = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
-  const [y, m] = ym.split('-').map(Number)
-  const monthStr = `${MONTH_NAMES[m - 1]} ${y + 543}`
+  const { worker, dateFrom, dateTo, extraDeductions, payerName } = cfg
+  const F = (n: number) => new Intl.NumberFormat('th-TH').format(Math.round(n))
+  const thD = (iso: string) => new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+  const thDShort = (iso: string) => new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
 
-  const recs    = attendance.filter(r => r.workerId === worker.id && r.date.startsWith(ym))
-  const advRecs = advances.filter(a => a.workerId === worker.id && a.date.startsWith(ym))
-  const { fullDays, halfDays, absentDays, mvpDays, wage } = calcMonthlyWageChaisila(worker, ym, attendance)
+  const { recs, fullDays, halfDays, mvpDays, absentDays, wage } = calcWageRange(worker, dateFrom, dateTo, attendance)
+  const advRecs  = advances.filter(a => a.workerId === worker.id && a.date >= dateFrom && a.date <= dateTo)
   const totalAdv = advRecs.reduce((s, a) => s + a.amount, 0)
-  const net      = wage - totalAdv
+  const totalExtra = extraDeductions.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0)
+  const net = wage - totalAdv - totalExtra
 
-  const fmt = (n: number) => new Intl.NumberFormat('th-TH').format(Math.round(n))
-  const thDate = (iso: string) => new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+  const printDate = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
 
+  // Attendance rows
   const attendRows = recs
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(r => {
-      const dayLabel: Record<string, string> = { full: 'เต็มวัน', half: 'ครึ่งวัน', absent: 'หยุด', holiday: 'วันหยุด' }
       const isMVP  = r.shop === 'mvp'
+      const dayLbl: Record<string, string> = { full: 'เต็มวัน', half: 'ครึ่งวัน', absent: 'หยุด', holiday: 'วันหยุด' }
       const dayWage = isMVP ? 0 : (r.dayType === 'full' ? worker.dailyWage : r.dayType === 'half' ? worker.dailyWage / 2 : 0)
       return `<tr>
-        <td>${thDate(r.date)}</td>
-        <td style="text-align:center">${r.shop === 'chaisila' ? 'Chaisila' : 'MVP'}</td>
-        <td style="text-align:center">${dayLabel[r.dayType] ?? r.dayType}${isMVP ? ' <em style="color:#94a3b8;font-size:11px">(ไม่คิดค่าแรง)</em>' : ''}</td>
-        <td style="text-align:right">${dayWage > 0 ? fmt(dayWage) : '—'}</td>
-        <td>${r.note || ''}</td>
+        <td>${thDShort(r.date)}</td>
+        <td style="text-align:center">${isMVP ? 'MVP' : 'Chaisila'}</td>
+        <td style="text-align:center">${dayLbl[r.dayType] ?? r.dayType}</td>
+        <td style="text-align:right">${dayWage > 0 ? F(dayWage) : isMVP ? '<span style="color:#94a3b8">—</span>' : '—'}</td>
       </tr>`
     }).join('')
 
+  // Advances rows
   const advRows = advRecs
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(a => `<tr>
-      <td>${thDate(a.date)}</td>
-      <td colspan="3" style="text-align:left">${a.note || 'เบิกเงิน'}</td>
-      <td style="text-align:right; color:#ef4444">−${fmt(a.amount)}</td>
+      <td style="color:#94a3b8">${thDShort(a.date)}</td>
+      <td>${a.note || 'เบิกเงิน'}</td>
+      <td style="text-align:right;color:#ef4444">฿${F(a.amount)}</td>
     </tr>`).join('')
 
-  const win = window.open('', '_blank', 'width=720,height=800')
+  // Extra deductions rows
+  const extraRows = extraDeductions
+    .filter(d => parseFloat(d.amount) > 0)
+    .map(d => `<tr>
+      <td>หัก ${d.label}</td>
+      <td style="text-align:right;color:#ef4444">฿${F(parseFloat(d.amount))}</td>
+    </tr>`).join('')
+
+  const win = window.open('', '_blank', 'width=740,height=900')
   if (!win) return
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="utf-8"/>
-    <title>ใบสรุปค่าแรง — ${worker.name}</title>
+    <title>Pay Slip — ${worker.name}</title>
     <style>
-      * { box-sizing: border-box; }
-      body { font-family: 'Noto Sans Thai', Tahoma, sans-serif; padding: 32px; color: #1e293b; font-size: 13px; max-width: 680px; margin: 0 auto; }
-      h2  { margin: 0 0 2px; font-size: 20px; }
-      .sub { color: #64748b; font-size: 13px; margin-bottom: 20px; }
-      .info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; }
-      .info-item label { font-size: 11px; color: #94a3b8; display: block; }
-      .info-item span  { font-size: 14px; font-weight: 600; }
-      table  { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-      th, td { border: 1px solid #e2e8f0; padding: 6px 10px; }
-      th     { background: #f8fafc; font-weight: 600; font-size: 12px; color: #475569; }
-      .section-title { font-size: 13px; font-weight: 600; margin: 16px 0 6px; color: #334155; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }
-      .summary { background: #f1f5f9; border-radius: 8px; padding: 16px; margin-top: 16px; }
-      .summary-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
-      .summary-row.total { font-size: 16px; font-weight: 700; border-top: 2px solid #cbd5e1; margin-top: 8px; padding-top: 8px; }
-      .net-positive { color: #16a34a; }
-      .net-negative { color: #dc2626; }
-      .footer { margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-      .sig-box { border-top: 1px solid #94a3b8; padding-top: 8px; text-align: center; font-size: 12px; color: #94a3b8; }
-      @media print { body { padding: 16px; } }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: 'Noto Sans Thai', Tahoma, sans-serif; color: #1e293b; font-size: 13px; }
+      .page { max-width: 680px; margin: 0 auto; padding: 36px 40px; }
+
+      /* Header */
+      .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #f97316; padding-bottom: 14px; margin-bottom: 18px; }
+      .header-left h1 { font-size: 22px; font-weight: 800; color: #f97316; letter-spacing: -0.5px; }
+      .header-left p  { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+      .header-right   { text-align: right; }
+      .header-right .shop-name { font-size: 14px; font-weight: 700; color: #1e293b; }
+      .header-right .shop-sub  { font-size: 11px; color: #94a3b8; }
+
+      /* Worker info bar */
+      .info-bar { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+      .info-item label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px; }
+      .info-item span  { font-size: 14px; font-weight: 700; color: #1e293b; }
+
+      /* Tables */
+      .section-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; margin: 16px 0 6px; }
+      table  { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+      th, td { padding: 6px 10px; }
+      thead tr { background: #f1f5f9; }
+      th { font-weight: 600; font-size: 11px; color: #64748b; text-align: left; border-bottom: 1px solid #e2e8f0; }
+      tbody tr { border-bottom: 1px solid #f1f5f9; }
+      tbody tr:last-child { border-bottom: none; }
+
+      /* Two-column layout for income/deductions */
+      .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+
+      /* Net payable box */
+      .net-box { margin-top: 20px; border: 2px solid #1e293b; border-radius: 8px; overflow: hidden; }
+      .net-box-header { background: #1e293b; color: white; padding: 8px 16px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+      .net-box-body   { padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; }
+      .net-label      { font-size: 13px; color: #64748b; }
+      .net-amount     { font-size: 28px; font-weight: 900; letter-spacing: -1px; }
+      .net-positive   { color: #16a34a; }
+      .net-negative   { color: #dc2626; }
+      .net-note       { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+      /* Signature */
+      .sig-area { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+      .sig-box  { text-align: center; }
+      .sig-line { border-top: 1px solid #94a3b8; padding-top: 8px; font-size: 12px; color: #475569; margin-top: 40px; }
+      .sig-date { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+
+      .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 99px; background: #fee2e2; color: #dc2626; font-weight: 600; }
+
+      @media print {
+        .page { padding: 20px 24px; }
+        .net-amount { font-size: 24px; }
+      }
     </style>
   </head><body>
-    <h2>ใบสรุปค่าแรงประจำเดือน</h2>
-    <div class="sub">ไชยศิลา ค้าของเก่า &nbsp;|&nbsp; Chaisila Recycle</div>
+  <div class="page">
 
-    <div class="info">
-      <div class="info-item"><label>ชื่อคนงาน</label><span>${worker.name}</span></div>
-      <div class="info-item"><label>เดือน</label><span>${monthStr}</span></div>
-      <div class="info-item"><label>ค่าแรงเต็มวัน</label><span>฿${fmt(worker.dailyWage)}/วัน</span></div>
-      <div class="info-item"><label>ร้านหลัก</label><span>${worker.defaultShop === 'chaisila' ? 'Chaisila' : 'MVP (คิดค่าแรงเฉพาะวัน Chaisila)'}</span></div>
-    </div>
-
-    <div class="section-title">บันทึกการเข้างาน (${recs.length} วัน)</div>
-    <table>
-      <thead><tr><th>วันที่</th><th>ร้าน</th><th>ประเภท</th><th style="text-align:right">ค่าแรง (฿)</th><th>หมายเหตุ</th></tr></thead>
-      <tbody>${attendRows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8">ไม่มีบันทึกการเข้างาน</td></tr>'}</tbody>
-    </table>
-
-    <div class="section-title">รายการเบิกเงิน (${advRecs.length} รายการ)</div>
-    ${advRows
-      ? `<table>
-          <thead><tr><th>วันที่</th><th colspan="3">รายละเอียด</th><th style="text-align:right">จำนวน (฿)</th></tr></thead>
-          <tbody>${advRows}</tbody>
-        </table>`
-      : '<p style="color:#94a3b8;font-size:12px;margin:4px 0 16px">ไม่มีรายการเบิก</p>'}
-
-    <div class="summary">
-      <div class="summary-row"><span>วันทำงาน Chaisila: เต็มวัน ${fullDays} วัน × ฿${fmt(worker.dailyWage)}</span><span>฿${fmt(fullDays * worker.dailyWage)}</span></div>
-      <div class="summary-row"><span>วันทำงาน Chaisila: ครึ่งวัน ${halfDays} วัน × ฿${fmt(worker.dailyWage / 2)}</span><span>฿${fmt(halfDays * (worker.dailyWage / 2))}</span></div>
-      ${mvpDays > 0 ? `<div class="summary-row" style="color:#94a3b8"><span>วันทำงาน MVP ${mvpDays} วัน (ไม่คิดค่าแรง)</span><span>—</span></div>` : ''}
-      <div class="summary-row"><span>หยุดงาน/วันหยุด ${absentDays} วัน</span><span>—</span></div>
-      <div class="summary-row" style="color:#ef4444"><span>เบิกเงินทั้งหมด</span><span>−฿${fmt(totalAdv)}</span></div>
-      <div class="summary-row total ${net >= 0 ? 'net-positive' : 'net-negative'}">
-        <span>💰 ยอดค้างจ่าย</span>
-        <span>฿${fmt(net)}</span>
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <h1>ใบรับเงิน (Pay Slip)</h1>
+        <p>จ่ายเป็นเงินสด</p>
+      </div>
+      <div class="header-right">
+        <div class="shop-name">ไชยศิลา ค้าของเก่า</div>
+        <div class="shop-sub">Chaisila Recycle</div>
       </div>
     </div>
 
-    <div class="footer">
-      <div class="sig-box">ลายเซ็นคนงาน<br/><br/>(......................................)</div>
-      <div class="sig-box">ลายเซ็นผู้จ่าย<br/><br/>(......................................)</div>
+    <!-- Worker info -->
+    <div class="info-bar">
+      <div class="info-item">
+        <label>ชื่อคนงาน</label>
+        <span>${worker.name}</span>
+      </div>
+      <div class="info-item">
+        <label>งวดวันที่</label>
+        <span style="font-size:12px">${thD(dateFrom)} — ${thD(dateTo)}</span>
+      </div>
+      <div class="info-item">
+        <label>ค่าแรง/วัน</label>
+        <span>฿${F(worker.dailyWage)}</span>
+      </div>
     </div>
+
+    <!-- Two-column: income + deductions -->
+    <div class="two-col">
+
+      <!-- รายรับ -->
+      <div>
+        <div class="section-label">รายรับ</div>
+        <table>
+          <thead><tr><th>รายการ</th><th style="text-align:right">จำนวน (฿)</th></tr></thead>
+          <tbody>
+            ${fullDays > 0 ? `<tr><td>เต็มวัน (Chaisila) ${fullDays} วัน</td><td style="text-align:right">${F(fullDays * worker.dailyWage)}</td></tr>` : ''}
+            ${halfDays > 0 ? `<tr><td>ครึ่งวัน (Chaisila) ${halfDays} วัน</td><td style="text-align:right">${F(halfDays * (worker.dailyWage / 2))}</td></tr>` : ''}
+            ${mvpDays > 0 ? `<tr><td style="color:#94a3b8">MVP ${mvpDays} วัน <span class="badge">ไม่คิดค่าแรง</span></td><td style="text-align:right;color:#94a3b8">—</td></tr>` : ''}
+            ${fullDays === 0 && halfDays === 0 ? '<tr><td colspan="2" style="color:#94a3b8;text-align:center">ไม่มีข้อมูลการเข้างาน</td></tr>' : ''}
+          </tbody>
+          <tfoot>
+            <tr style="border-top:2px solid #e2e8f0;font-weight:700;background:#f8fafc">
+              <td>รวมรายรับ</td>
+              <td style="text-align:right">฿${F(wage)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- รายการหัก -->
+      <div>
+        <div class="section-label">รายการหัก</div>
+        <table>
+          <thead><tr><th>รายการ</th><th style="text-align:right">จำนวน (฿)</th></tr></thead>
+          <tbody>
+            ${totalAdv > 0 ? `<tr><td>เบิกเงินล่วงหน้า (${advRecs.length} ครั้ง)</td><td style="text-align:right;color:#ef4444">฿${F(totalAdv)}</td></tr>` : ''}
+            ${extraRows || ''}
+            ${totalAdv === 0 && totalExtra === 0 ? '<tr><td colspan="2" style="color:#94a3b8;text-align:center">ไม่มีรายการหัก</td></tr>' : ''}
+          </tbody>
+          <tfoot>
+            <tr style="border-top:2px solid #e2e8f0;font-weight:700;background:#fff5f5">
+              <td>รวมหัก</td>
+              <td style="text-align:right;color:#ef4444">฿${F(totalAdv + totalExtra)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Net payable -->
+    <div class="net-box">
+      <div class="net-box-header">💰 ยอดสุทธิที่ต้องได้รับ</div>
+      <div class="net-box-body" style="padding:18px 20px;">
+        <div style="font-size:22px;font-weight:800;color:#1e293b;">ยอดสุทธิ</div>
+        <div class="net-amount ${net >= 0 ? 'net-positive' : 'net-negative'}" style="font-size:42px;">฿${F(net)}</div>
+      </div>
+    </div>
+
+    <!-- Signature -->
+    <div class="sig-area">
+      <div class="sig-box">
+        <div class="sig-line">ลายเซ็นผู้รับเงิน</div>
+        <div style="font-size:12px;color:#475569;margin-top:4px">(${worker.name})</div>
+        <div class="sig-date">วันที่รับเงิน ............../............../..............&nbsp;</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-line">ลายเซ็นผู้จ่าย</div>
+        <div style="font-size:12px;color:#475569;margin-top:4px">(${payerName})</div>
+        <div class="sig-date">ณ วันที่ ${printDate}</div>
+      </div>
+    </div>
+
+  </div>
   </body></html>`)
   win.document.close()
   win.focus()
-  setTimeout(() => win.print(), 300)
+  setTimeout(() => win.print(), 350)
+}
+
+// ─── Pay Slip Modal ────────────────────────────────────────────
+
+const DEFAULT_PAYER = 'ปรีชญารัตน์ ไชยศิลา'
+
+interface PaySlipModalProps {
+  worker:     Worker
+  selYM:      string
+  attendance: AttendanceRecord[]
+  advances:   AdvanceRecord[]
+  onClose:    () => void
+}
+
+function PaySlipModal({ worker, selYM, attendance, advances, onClose }: PaySlipModalProps) {
+  // Default range = first→last day of selYM
+  const firstDay = `${selYM}-01`
+  const lastDay  = (() => {
+    const [y, m] = selYM.split('-').map(Number)
+    return new Date(y, m, 0).toISOString().slice(0, 10)
+  })()
+
+  const [dateFrom, setDateFrom] = useState(firstDay)
+  const [dateTo,   setDateTo]   = useState(lastDay)
+  const [extras,   setExtras]   = useState<ExtraDeduction[]>([])
+  const [payer,    setPayer]    = useState(DEFAULT_PAYER)
+
+  const addExtra = () => setExtras(p => [...p, { label: '', amount: '' }])
+  const updateExtra = (i: number, patch: Partial<ExtraDeduction>) =>
+    setExtras(p => p.map((e, idx) => idx === i ? { ...e, ...patch } : e))
+  const removeExtra = (i: number) => setExtras(p => p.filter((_, idx) => idx !== i))
+
+  // Live preview numbers
+  const { wage, fullDays, halfDays, mvpDays } = calcWageRange(worker, dateFrom, dateTo, attendance)
+  const advRecs    = advances.filter(a => a.workerId === worker.id && a.date >= dateFrom && a.date <= dateTo)
+  const totalAdv   = advRecs.reduce((s, a) => s + a.amount, 0)
+  const totalExtra = extras.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
+  const net        = wage - totalAdv - totalExtra
+
+  const F = (n: number) => new Intl.NumberFormat('th-TH').format(Math.round(n))
+
+  const handlePrint = () => {
+    doPrintPaySlip(
+      { worker, dateFrom, dateTo, extraDeductions: extras.filter(e => e.label && parseFloat(e.amount) > 0), payerName: payer },
+      attendance,
+      advances,
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[92vh]">
+
+        {/* Modal header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-bold text-slate-800">🖨️ Pay Slip</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{worker.name} · ฿{F(worker.dailyWage)}/วัน</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+
+          {/* Period */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">งวดวันที่</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">ตั้งแต่</label>
+                <input type="date" className="input text-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">ถึงวันที่</label>
+                <input type="date" className="input text-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Live preview */}
+          <div className="bg-slate-50 rounded-xl p-4 space-y-2 text-sm">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">ตัวอย่างสรุป</p>
+            <div className="flex justify-between">
+              <span className="text-slate-600">เต็มวัน {fullDays} วัน</span>
+              <span className="font-mono">฿{F(fullDays * worker.dailyWage)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-600">ครึ่งวัน {halfDays} วัน</span>
+              <span className="font-mono">฿{F(halfDays * (worker.dailyWage / 2))}</span>
+            </div>
+            {mvpDays > 0 && (
+              <div className="flex justify-between text-slate-400">
+                <span>MVP {mvpDays} วัน (ไม่คิดค่าแรง)</span>
+                <span className="font-mono">—</span>
+              </div>
+            )}
+            <div className="flex justify-between font-semibold border-t border-slate-200 pt-2 mt-1">
+              <span>รวมค่าแรง</span>
+              <span className="font-mono text-slate-800">฿{F(wage)}</span>
+            </div>
+            {totalAdv > 0 && (
+              <div className="flex justify-between text-red-500">
+                <span>หักเบิก ({advRecs.length} รายการ)</span>
+                <span className="font-mono">−฿{F(totalAdv)}</span>
+              </div>
+            )}
+            {extras.filter(e => parseFloat(e.amount) > 0).map((e, i) => (
+              <div key={i} className="flex justify-between text-red-500">
+                <span>หัก {e.label || '...'}</span>
+                <span className="font-mono">−฿{F(parseFloat(e.amount))}</span>
+              </div>
+            ))}
+            <div className={`flex justify-between text-base font-bold border-t-2 border-slate-300 pt-2 mt-1 ${net >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+              <span>ยอดสุทธิ</span>
+              <span className="font-mono">฿{F(net)}</span>
+            </div>
+          </div>
+
+          {/* Extra deductions */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">รายการหักเพิ่มเติม</p>
+              <button onClick={addExtra} className="text-xs text-brand-600 hover:text-brand-700 font-medium">+ เพิ่มรายการหัก</button>
+            </div>
+            {extras.length === 0 ? (
+              <p className="text-xs text-slate-400 py-2">ไม่มีรายการหักเพิ่มเติม — กด "+ เพิ่มรายการหัก" ถ้าต้องการ</p>
+            ) : (
+              <div className="space-y-2">
+                {extras.map((e, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <input
+                      className="input flex-1 text-sm"
+                      placeholder="ชื่อรายการ เช่น ค่าหนี้, ค่าเหล้า..."
+                      value={e.label}
+                      onChange={ev => updateExtra(i, { label: ev.target.value })}
+                    />
+                    <input
+                      type="number" min="0" step="50"
+                      className="input w-28 text-sm font-mono text-right"
+                      placeholder="จำนวน ฿"
+                      value={e.amount}
+                      onChange={ev => updateExtra(i, { amount: ev.target.value })}
+                    />
+                    <button onClick={() => removeExtra(i)} className="text-slate-300 hover:text-red-400 transition-colors flex-shrink-0">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Payer name */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">ชื่อผู้จ่าย</label>
+            <input className="input text-sm" value={payer} onChange={e => setPayer(e.target.value)} placeholder="ชื่อผู้จ่ายเงิน" />
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-100 flex gap-3 justify-end">
+          <button onClick={onClose} className="btn-secondary text-sm py-2 px-5">ยกเลิก</button>
+          <button onClick={handlePrint} className="btn-primary text-sm py-2 px-6 flex items-center gap-2">
+            🖨️ พิมพ์ Pay Slip
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── Tab 3: Advances & Monthly Summary ───────────────────────
@@ -537,6 +825,7 @@ function SummaryTab() {
   const [selYM,      setSelYM]     = useState(currentYM)
   const [addOpen,    setAddOpen]   = useState(false)
   const [advDraft,   setAdvDraft]  = useState({ workerId: '', amount: '', date: today, note: '' })
+  const [paySlipWorker, setPaySlipWorker] = useState<Worker | null>(null)
 
   const activeWorkers = workers.filter(w => w.active)
 
@@ -634,8 +923,8 @@ function SummaryTab() {
                     </td>
                     <td className="px-5 py-3 text-center">
                       <button
-                        onClick={() => printWorkerReceipt(w, selYM, attendance, advances)}
-                        title="พิมพ์ใบสรุปค่าแรง"
+                        onClick={() => setPaySlipWorker(w)}
+                        title="พิมพ์ Pay Slip"
                         className="text-xs text-slate-400 hover:text-brand-600 transition-colors"
                       >
                         🖨️
@@ -728,6 +1017,17 @@ function SummaryTab() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Pay Slip modal */}
+      {paySlipWorker && (
+        <PaySlipModal
+          worker={paySlipWorker}
+          selYM={selYM}
+          attendance={attendance}
+          advances={advances}
+          onClose={() => setPaySlipWorker(null)}
+        />
       )}
     </div>
   )

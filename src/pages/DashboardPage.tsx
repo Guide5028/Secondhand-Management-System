@@ -1,16 +1,6 @@
 import { useState } from 'react'
-import { loadTransactions } from '../data/transactions'
-
-interface DailyRecord {
-  date: string; sale: number; purchase: number
-  labor: number; fuel: number; utility: number
-  rent: number; misc: number; other: number; vehicle: number
-}
-
-function loadDailyRecords(): DailyRecord[] {
-  try { const r = localStorage.getItem('kankrong_daily'); if (r) return JSON.parse(r) } catch {}
-  return []
-}
+import { useTransactions } from '../hooks/useTransactions'
+import { useDailyPL } from '../hooks/useDailyPL'
 
 const N   = (n: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 0 }).format(n)
 const pct = (n: number, base: number) => base > 0 ? ((n / base) * 100).toFixed(1) + '%' : '—'
@@ -22,8 +12,10 @@ export default function DashboardPage() {
   const [tab, setTab] = useState<'overview' | 'report'>('overview')
   const [selectedYM, setSelectedYM] = useState<string>('all')
 
-  const transactions = loadTransactions()
-  const dailyRecords = loadDailyRecords()
+  const { data: transactions = [], isLoading: txLoading } = useTransactions()
+  const { data: dailyRecords = [], isLoading: plLoading  } = useDailyPL()
+
+  const isLoading = txLoading || plLoading
 
   // ── Month list from real data ──
   const currentMonth = new Date().toISOString().slice(0, 7)
@@ -39,39 +31,26 @@ export default function DashboardPage() {
     const days = ym === 'all' ? dailyRecords  : dailyRecords.filter(d => d.date.startsWith(ym))
     const sales     = txs.filter(t => t.type === 'sale').reduce((s,t) => s + t.total, 0)
     const purchases = txs.filter(t => t.type === 'purchase').reduce((s,t) => s + t.total, 0)
-    const labor   = days.reduce((s,d) => s + d.labor, 0)
-    const fuel    = days.reduce((s,d) => s + d.fuel, 0)
+    const labor   = days.reduce((s,d) => s + d.labor,   0)
+    const fuel    = days.reduce((s,d) => s + d.fuel,    0)
     const utility = days.reduce((s,d) => s + d.utility, 0)
-    const rent    = days.reduce((s,d) => s + d.rent, 0)
-    const misc    = days.reduce((s,d) => s + d.misc, 0)
-    const other   = days.reduce((s,d) => s + d.other, 0)
+    const rent    = days.reduce((s,d) => s + d.rent,    0)
+    const misc    = days.reduce((s,d) => s + d.misc,    0)
+    const other   = days.reduce((s,d) => s + d.other,   0)
     const vehicle = days.reduce((s,d) => s + d.vehicle, 0)
     const exp     = labor + fuel + utility + rent + misc + other + vehicle
     return { sales, purchases, labor, fuel, utility, rent, misc, other, vehicle, exp,
              profit: sales - purchases - exp }
   }
 
-  // ── Monthly rows (for overview table) ──
+  // ── Monthly rows ──
   const monthlyRows = months.map(ym => ({ ym, ...aggregate(ym) }))
   const agg = aggregate(selectedYM)
   const profitMargin = agg.sales > 0 ? ((agg.profit / agg.sales) * 100).toFixed(1) : '0'
 
-  // ── Top 5 hero products (from transactions) ──
+  // ── Top 5 hero products ──
   function getTop5(ym: string | 'all') {
     const txs = ym === 'all' ? transactions : transactions.filter(t => t.date.startsWith(ym))
-
-    // Purchase top 5 by total weight
-    const buyMap: Record<string, { name: string; weight: number; value: number }> = {}
-    txs.filter(t => t.type === 'purchase').forEach(t =>
-      t.items.forEach(it => {
-        if (!buyMap[it.name]) buyMap[it.name] = { name: it.name, weight: 0, value: 0 }
-        buyMap[it.name].weight += it.weight
-        buyMap[it.name].value  += it.weight * it.price
-      })
-    )
-    const top5buy = Object.values(buyMap).sort((a,b) => b.value - a.value).slice(0, 5)
-
-    // Sale top 5 by total value
     const sellMap: Record<string, { name: string; weight: number; value: number }> = {}
     txs.filter(t => t.type === 'sale').forEach(t =>
       t.items.forEach(it => {
@@ -80,12 +59,19 @@ export default function DashboardPage() {
         sellMap[it.name].value  += it.weight * it.price
       })
     )
-    const top5sell = Object.values(sellMap).sort((a,b) => b.value - a.value).slice(0, 5)
-    return { top5buy, top5sell }
+    return Object.values(sellMap).sort((a,b) => b.value - a.value).slice(0, 5)
   }
 
-  const { top5buy, top5sell } = getTop5(selectedYM)
+  const top5sell = getTop5(selectedYM)
   const reportLabel = selectedYM === 'all' ? 'ทุกเดือน' : monthLabel(selectedYM)
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-slate-400 text-sm">
+        กำลังโหลดข้อมูล…
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -128,7 +114,6 @@ export default function DashboardPage() {
       {/* ── TAB: ภาพรวม ── */}
       {tab === 'overview' && (
         <div className="space-y-5">
-          {/* Summary cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="card p-4">
               <p className="text-xs text-slate-400 mb-1">ยอดขาย</p>
@@ -258,8 +243,6 @@ export default function DashboardPage() {
       {/* ── TAB: รายงานรายเดือน ── */}
       {tab === 'report' && (
         <div className="space-y-5">
-
-          {/* Hero KPIs */}
           <div className="card p-5 bg-gradient-to-br from-brand-50 to-white border border-brand-100">
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -290,37 +273,37 @@ export default function DashboardPage() {
 
           {/* Top 5 ขาย */}
           <div className="card overflow-hidden max-w-xl">
-              <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
-                <span className="text-base">🏆</span>
-                <h3 className="text-sm font-semibold text-slate-700">Hero Products — ขายออก (Top 5)</h3>
-              </div>
-              {top5sell.length === 0 ? (
-                <p className="px-5 py-8 text-center text-xs text-slate-400">ยังไม่มีข้อมูล</p>
-              ) : (
-                <div className="divide-y divide-slate-50">
-                  {top5sell.map((p, i) => {
-                    const maxVal = top5sell[0].value
-                    return (
-                      <div key={p.name} className="px-5 py-3 flex items-center gap-3">
-                        <span className={`text-sm font-bold w-5 text-center ${i === 0 ? 'text-amber-500' : 'text-slate-400'}`}>
-                          {i + 1}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-800 truncate">{p.name}</p>
-                          <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-blue-400 rounded-full" style={{ width: `${(p.value / maxVal) * 100}%` }} />
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-sm font-mono font-medium text-slate-800">฿{N(p.value)}</p>
-                          <p className="text-xs text-slate-400">{p.weight.toFixed(1)} น.</p>
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+              <span className="text-base">🏆</span>
+              <h3 className="text-sm font-semibold text-slate-700">Hero Products — ขายออก (Top 5)</h3>
+            </div>
+            {top5sell.length === 0 ? (
+              <p className="px-5 py-8 text-center text-xs text-slate-400">ยังไม่มีข้อมูล</p>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {top5sell.map((p, i) => {
+                  const maxVal = top5sell[0].value
+                  return (
+                    <div key={p.name} className="px-5 py-3 flex items-center gap-3">
+                      <span className={`text-sm font-bold w-5 text-center ${i === 0 ? 'text-amber-500' : 'text-slate-400'}`}>
+                        {i + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">{p.name}</p>
+                        <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-400 rounded-full" style={{ width: `${(p.value / maxVal) * 100}%` }} />
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-mono font-medium text-slate-800">฿{N(p.value)}</p>
+                        <p className="text-xs text-slate-400">{p.weight.toFixed(1)} น.</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

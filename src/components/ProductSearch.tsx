@@ -1,34 +1,31 @@
 import { useRef, useEffect } from 'react'
-import { loadProducts } from '../data/products'
+import type { Product } from '../data/products'
 
 interface Props {
-  search:   string
-  code:     string
-  name:     string
-  open:     boolean
+  products:   Product[]    // รับจาก parent (ไม่ load เอง)
+  search:     string
+  code:       string
+  name:       string
+  open:       boolean
   priceField?: 'refPrice' | 'sellPrice'  // ซื้อ=refPrice, ขาย=sellPrice
-  onSelect: (p: { code: string; name: string; refPrice: number; sellPrice: number }) => void
-  onChange: (search: string) => void
-  onClose?: () => void   // ปิด dropdown โดยไม่ clear การเลือก
+  onSelect:   (p: { code: string; name: string; refPrice: number; sellPrice: number }) => void
+  onChange:   (search: string) => void
+  onClose?:  () => void   // ปิด dropdown โดยไม่ clear การเลือก
 }
 
 export default function ProductSearch({
+  products,
   search, code, name, open,
   priceField = 'refPrice',
   onSelect, onChange, onClose,
 }: Props) {
-  const wrapRef  = useRef<HTMLDivElement>(null)
-  const products = loadProducts()
+  const wrapRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
         // ถ้าเลือกสินค้าแล้ว (name ถูก set) → แค่ปิด dropdown ไม่ clear ชื่อ
-        if (name) {
-          onClose?.()
-        } else {
-          onChange('')
-        }
+        if (name) { onClose?.() } else { onChange('') }
       }
     }
     document.addEventListener('mousedown', h)

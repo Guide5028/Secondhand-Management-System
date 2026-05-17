@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { loadTransactions } from '../data/transactions'
+import { useTransactions } from '../hooks/useTransactions'
 
 type FilterType = 'all' | 'purchase' | 'sale'
 
@@ -15,7 +15,7 @@ export default function HistoryPage() {
   const [search,   setSearch]   = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  const all = loadTransactions()  // re-reads on every render = always fresh
+  const { data: all = [], isLoading } = useTransactions()
 
   const toggle = (id: string) =>
     setExpanded(prev => {
@@ -49,7 +49,7 @@ export default function HistoryPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-4">
           <p className="text-xs text-slate-400 mb-1">รายการทั้งหมด</p>
-          <p className="text-2xl font-semibold">{all.length}</p>
+          <p className="text-2xl font-semibold">{isLoading ? '…' : all.length}</p>
           <p className="text-xs text-slate-400 mt-1">ซื้อ {purchaseCount} · ขาย {saleCount}</p>
         </div>
         <div className="card p-4">
@@ -102,7 +102,9 @@ export default function HistoryPage() {
 
       {/* Table */}
       <div className="card">
-        {rows.length === 0 ? (
+        {isLoading ? (
+          <div className="px-5 py-16 text-center text-slate-400 text-sm">กำลังโหลด…</div>
+        ) : rows.length === 0 ? (
           <div className="px-5 py-16 text-center">
             <p className="text-3xl mb-2">📋</p>
             <p className="text-sm text-slate-400">

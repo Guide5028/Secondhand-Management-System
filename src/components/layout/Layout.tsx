@@ -1,4 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
 
 const NAV = [
   { to: '/dashboard', label: 'ภาพรวม',         icon: '📊' },
@@ -48,12 +49,19 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Branch badge (MAIN/MVP) */}
-        <div className="px-5 py-4 border-t border-slate-700">
+        {/* Branch badge + logout */}
+        <div className="px-5 py-4 border-t border-slate-700 space-y-3">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-brand-500"></span>
             <span className="text-xs text-slate-400">สาขาหลัก (MAIN)</span>
           </div>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            className="w-full text-left text-xs text-slate-400 hover:text-red-400 transition-colors flex items-center gap-2"
+          >
+            <span>🚪</span>
+            <span>ออกจากระบบ</span>
+          </button>
         </div>
       </aside>
 

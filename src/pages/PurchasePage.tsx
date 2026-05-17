@@ -1,35 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loadProducts } from '../data/products'
 import ProductSearch from '../components/ProductSearch'
-import { saveTransaction } from '../data/transactions'
-
-function getCatThai(code: string): string {
-  const n = parseInt(code.replace('CR', ''))
-  if ([1,2,3,4,5,6,11,22].includes(n)) return 'ทองแดง'
-  if (n >= 7 && n <= 20) return 'มีเนียม'
-  if ([32,33,34,71].includes(n)) return 'เหล็ก'
-  if (n >= 23 && n <= 31) return 'พลาสติก'
-  if (n >= 36 && n <= 39) return 'กระดาษ'
-  if ([35,40,41,42,43,44,45,46,47,48,49,50,51,52,67,68,69,70].includes(n)) return 'ขวด'
-  if (n >= 55 && n <= 66) return 'อิเล็กฯ'
-  if ([72,73,74].includes(n)) return 'แบต'
-  return 'อื่นๆ'
-}
-
-const PRODUCTS = loadProducts().map(p => ({ ...p, cat: getCatThai(p.code) }))
-
-
-const CATEGORIES = ['ทั้งหมด', ...Array.from(new Set(PRODUCTS.map(p => p.cat)))]
-
-// Mock history — เมื่อต่อ backend จะดึงจาก API
-const MOCK_HISTORY = [
-  { code: 'CR32', name: 'เหล็กหนา',        weight: 2786.5, cashOut: 69663 },
-  { code: 'CR36', name: 'กระดาษลัง',       weight: 1038.6, cashOut: 31158 },
-  { code: 'CR1',  name: 'ทองแดงปอกสวย #1', weight: 89.2,   cashOut: 34451 },
-  { code: 'CR7',  name: 'มีเนียมบาง',      weight: 210.4,  cashOut: 13466 },
-  { code: 'CR24', name: 'พลาสติกใส',       weight: 589.3,  cashOut: 4714  },
-]
+import { useProducts } from '../hooks/useProducts'
+import { useSaveTransaction } from '../hooks/useTransactions'
+import type { Transaction } from '../data/transactions'
 
 interface Item {
   id: number; code: string; name: string; weight: string; price: string; search: string; open: boolean
@@ -37,13 +11,14 @@ interface Item {
 let nextId = 1
 const newItem = (): Item => ({ id: nextId++, code: '', name: '', weight: '', price: '', search: '', open: false })
 
-
 export default function PurchasePage() {
   const navigate = useNavigate()
+  const { data: products = [] } = useProducts()
+  const saveTx = useSaveTransaction()
+
   const [tab,   setTab]   = useState<'entry' | 'summary'>('entry')
   const [date,  setDate]  = useState(new Date().toISOString().slice(0, 10))
   const [items, setItems] = useState<Item[]>([newItem()])
-  const [catFilter, setCatFilter] = useState('ทั้งหมด')
 
   const updateItem = (id: number, patch: Partial<Item>) =>
     setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i))
@@ -57,7 +32,7 @@ export default function PurchasePage() {
   const total      = items.reduce((s, i) => s + (parseFloat(i.weight) || 0) * (parseFloat(i.price) || 0), 0)
   const validItems = items.filter(i => i.name && parseFloat(i.weight) > 0)
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (validItems.length === 0) { alert('กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ'); return }
     const now       = new Date()
     const receiptNo = `REC-${now.getTime()}`
@@ -66,11 +41,12 @@ export default function PurchasePage() {
       code: i.code, name: i.name,
       weight: parseFloat(i.weight), price: parseFloat(i.price),
     }))
-    saveTransaction({
+    const tx: Transaction = {
       id: receiptNo, type: 'purchase', receiptNo,
       date, time: now.toTimeString().slice(0, 5),
       party, items: txItems, total,
-    })
+    }
+    await saveTx.mutateAsync(tx)
     const thDate = new Date(date).toLocaleDateString('th-TH', { year: 'numeric', month: '2-digit', day: '2-digit' })
     sessionStorage.setItem('receipt', JSON.stringify({
       date: thDate, receiptNo, sellerName: party,
@@ -80,14 +56,16 @@ export default function PurchasePage() {
     navigate('/receipt')
   }
 
-  const filteredHistory = catFilter === 'ทั้งหมด'
-    ? MOCK_HISTORY
-    : MOCK_HISTORY.filter(h => {
-        const p = PRODUCTS.find(p => p.code === h.code)
-        return p?.cat === catFilter
-      })
-
   const fmt = (n: number) => new Intl.NumberFormat('th-TH').format(Math.round(n))
+
+  // ── Summary tab: aggregate from recent transactions (for now shows placeholder) ──
+  const MOCK_HISTORY = [
+    { code: 'CR32', name: 'เหล็กหนา',        weight: 2786.5, cashOut: 69663 },
+    { code: 'CR36', name: 'กระดาษลัง',       weight: 1038.6, cashOut: 31158 },
+    { code: 'CR1',  name: 'ทองแดงปอกสวย1',   weight: 89.2,   cashOut: 34451 },
+    { code: 'CR7',  name: 'มีเนียมบาง',      weight: 210.4,  cashOut: 13466 },
+    { code: 'CR24', name: 'พลาสติกใส',       weight: 589.3,  cashOut: 4714  },
+  ]
 
   return (
     <div className="max-w-4xl space-y-5">
@@ -133,6 +111,7 @@ export default function PurchasePage() {
                     <div className="col-span-1 text-center text-sm text-slate-400">{idx + 1}</div>
                     <div className="col-span-5">
                       <ProductSearch
+                        products={products}
                         search={item.search} code={item.code} name={item.name} open={item.open}
                         priceField="refPrice"
                         onSelect={p => selectProduct(item.id, p)}
@@ -165,9 +144,10 @@ export default function PurchasePage() {
             </div>
           </div>
 
-          <button onClick={handleSubmit} disabled={validItems.length === 0}
+          <button onClick={handleSubmit}
+            disabled={validItems.length === 0 || saveTx.isPending}
             className="btn-primary w-full py-3 text-base flex items-center justify-center gap-2">
-            🧾 บันทึกและออกใบเสร็จ
+            {saveTx.isPending ? '⏳ กำลังบันทึก…' : '🧾 บันทึกและออกใบเสร็จ'}
           </button>
         </>
       )}
@@ -175,16 +155,6 @@ export default function PurchasePage() {
       {/* TAB 2: สรุปยอดซื้อ */}
       {tab === 'summary' && (
         <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap gap-2 items-center">
-            <span className="text-sm font-medium text-slate-700 mr-2">Filter:</span>
-            {CATEGORIES.map(cat => (
-              <button key={cat} onClick={() => setCatFilter(cat)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors
-                  ${catFilter === cat ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                {cat}
-              </button>
-            ))}
-          </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-slate-400 bg-slate-50 border-b border-slate-100">
@@ -195,7 +165,7 @@ export default function PurchasePage() {
               </tr>
             </thead>
             <tbody>
-              {filteredHistory.map(h => (
+              {MOCK_HISTORY.map(h => (
                 <tr key={h.code} className="border-b border-slate-50 hover:bg-slate-50">
                   <td className="px-5 py-3">
                     <span className="text-xs font-mono text-slate-400 mr-2">{h.code}</span>
@@ -210,8 +180,8 @@ export default function PurchasePage() {
               ))}
               <tr className="bg-slate-50 font-semibold">
                 <td className="px-5 py-3">รวม</td>
-                <td className="px-5 py-3 text-right font-mono">{fmt(filteredHistory.reduce((s, h) => s + h.weight, 0))}</td>
-                <td className="px-5 py-3 text-right font-mono">฿{fmt(filteredHistory.reduce((s, h) => s + h.cashOut, 0))}</td>
+                <td className="px-5 py-3 text-right font-mono">{fmt(MOCK_HISTORY.reduce((s, h) => s + h.weight, 0))}</td>
+                <td className="px-5 py-3 text-right font-mono">฿{fmt(MOCK_HISTORY.reduce((s, h) => s + h.cashOut, 0))}</td>
                 <td className="px-5 py-3"></td>
               </tr>
             </tbody>
