@@ -45,7 +45,7 @@ function monthLabel(ym: string) {
 
 export default function DailyPLPage() {
   const today = new Date().toISOString().slice(0, 10)
-  const [tab,     setTab]     = useState<'daily' | 'monthly'>('daily')
+  const [tab,     setTab]     = useState<'daily' | 'monthly'>('monthly')
   const [year,    setYear]    = useState(new Date().getFullYear())
   const [month,   setMonth]   = useState(new Date().getMonth() + 1)
   const [records, setRecords] = useState<DailyRecord[]>(loadRecords)
@@ -121,13 +121,13 @@ export default function DailyPLPage() {
         )}
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — monthly first (ภาพรวม), daily second (บันทึกรายวัน) */}
       <div className="flex gap-2">
-        {(['daily','monthly'] as const).map(t => (
+        {(['monthly','daily'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors
               ${tab === t ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:border-brand-400'}`}>
-            {t === 'daily' ? '📅 รายวัน' : '📆 รายเดือน'}
+            {t === 'monthly' ? '📆 สรุปรายเดือน' : '📅 บันทึกรายวัน'}
           </button>
         ))}
       </div>

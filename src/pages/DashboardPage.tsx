@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { loadTransactions } from '../data/transactions'
-import { loadProducts } from '../data/products'
 
 interface DailyRecord {
   date: string; sale: number; purchase: number
@@ -25,7 +24,6 @@ export default function DashboardPage() {
 
   const transactions = loadTransactions()
   const dailyRecords = loadDailyRecords()
-  const products     = loadProducts()
 
   // ── Month list from real data ──
   const currentMonth = new Date().toISOString().slice(0, 7)
@@ -290,43 +288,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Top 5 ซื้อ */}
-            <div className="card overflow-hidden">
-              <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
-                <span className="text-base">🥇</span>
-                <h3 className="text-sm font-semibold text-slate-700">Hero Products — ซื้อเข้า (Top 5)</h3>
-              </div>
-              {top5buy.length === 0 ? (
-                <p className="px-5 py-8 text-center text-xs text-slate-400">ยังไม่มีข้อมูล</p>
-              ) : (
-                <div className="divide-y divide-slate-50">
-                  {top5buy.map((p, i) => {
-                    const maxVal = top5buy[0].value
-                    return (
-                      <div key={p.name} className="px-5 py-3 flex items-center gap-3">
-                        <span className={`text-sm font-bold w-5 text-center ${i === 0 ? 'text-amber-500' : 'text-slate-400'}`}>
-                          {i + 1}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-800 truncate">{p.name}</p>
-                          <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-brand-400 rounded-full" style={{ width: `${(p.value / maxVal) * 100}%` }} />
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-sm font-mono font-medium text-slate-800">฿{N(p.value)}</p>
-                          <p className="text-xs text-slate-400">{p.weight.toFixed(1)} น.</p>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Top 5 ขาย */}
-            <div className="card overflow-hidden">
+          {/* Top 5 ขาย */}
+          <div className="card overflow-hidden max-w-xl">
               <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
                 <span className="text-base">🏆</span>
                 <h3 className="text-sm font-semibold text-slate-700">Hero Products — ขายออก (Top 5)</h3>
@@ -358,22 +321,6 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
-          </div>
-
-          {/* ราคาอ้างอิงสินค้าจาก ProductsPage */}
-          <div className="card">
-            <div className="px-5 py-3 border-b border-slate-100">
-              <h3 className="text-sm font-semibold text-slate-700">ราคาอ้างอิงปัจจุบัน (ดึงจากจัดการสินค้า)</h3>
-            </div>
-            <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-2">
-              {products.slice(0, 8).map(p => (
-                <div key={p.code} className="flex justify-between items-center py-1.5 px-2 rounded-lg hover:bg-slate-50">
-                  <span className="text-sm text-slate-600 truncate mr-2">{p.name}</span>
-                  <span className="text-sm font-mono font-medium text-slate-800 shrink-0">฿{p.refPrice}</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       )}
     </div>

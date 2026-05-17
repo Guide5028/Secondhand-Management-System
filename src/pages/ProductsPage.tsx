@@ -26,6 +26,8 @@ export default function ProductsPage() {
   const [saved,       setSaved]       = useState(false)
   const [catMgrOpen,  setCatMgrOpen]  = useState(false)
   const [newCatLabel, setNewCatLabel] = useState('')
+  const [editCatKey,  setEditCatKey]  = useState<string | null>(null)
+  const [editCatVal,  setEditCatVal]  = useState('')
 
   const update = (code: string, field: keyof Product, raw: string) => {
     setProducts(prev => prev.map(p =>
@@ -95,6 +97,21 @@ export default function ProductsPage() {
     const updated = categories.filter(c => c.key !== key)
     setCategories(updated)
     saveCategories(updated)
+  }
+
+  const startEditCat = (cat: { key: string; label: string }) => {
+    setEditCatKey(cat.key)
+    setEditCatVal(cat.label)
+  }
+
+  const commitEditCat = () => {
+    if (!editCatKey) return
+    const label = editCatVal.trim()
+    if (!label) { setEditCatKey(null); return }
+    const updated = categories.map(c => c.key === editCatKey ? { ...c, label } : c)
+    setCategories(updated)
+    saveCategories(updated)
+    setEditCatKey(null)
   }
 
   const productCountForCat = (key: string) =>
@@ -410,17 +427,38 @@ export default function ProductsPage() {
             {/* Category list */}
             <div className="flex-1 overflow-y-auto space-y-2">
               {categories.map(cat => {
-                const count = productCountForCat(cat.key)
+                const count   = productCountForCat(cat.key)
+                const editing = editCatKey === cat.key
                 return (
                   <div
                     key={cat.key}
-                    className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-slate-100 hover:bg-slate-50"
+                    className="flex items-center justify-between px-3 py-2 rounded-lg border border-slate-100 hover:bg-slate-50 gap-2"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-700">{cat.label}</span>
-                      <span className="text-xs text-slate-400 font-mono">({cat.key})</span>
-                    </div>
-                    <div className="flex items-center gap-2">
+                    {editing ? (
+                      <input
+                        autoFocus
+                        className="flex-1 text-sm border border-brand-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-brand-400"
+                        value={editCatVal}
+                        onChange={e => setEditCatVal(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') commitEditCat()
+                          if (e.key === 'Escape') setEditCatKey(null)
+                        }}
+                        onBlur={commitEditCat}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span className="text-sm font-medium text-slate-700 truncate">{cat.label}</span>
+                        <button
+                          onClick={() => startEditCat(cat)}
+                          className="text-xs text-slate-300 hover:text-brand-500 transition-colors flex-shrink-0"
+                          title="แก้ไขชื่อ"
+                        >
+                          ✎
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium
                         ${count > 0
                           ? 'bg-brand-100 text-brand-700'

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ProductSearch from '../components/ProductSearch'
 import { saveTransaction } from '../data/transactions'
@@ -13,8 +13,6 @@ export default function SalePage() {
   const [date,      setDate]      = useState(new Date().toISOString().slice(0, 10))
   const [buyerName, setBuyerName] = useState('')
   const [items,     setItems]     = useState<SaleItem[]>([newItem()])
-  const [images,    setImages]    = useState<{ name: string; url: string }[]>([])
-  const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
   const updateItem = (id: number, patch: Partial<SaleItem>) =>
@@ -26,28 +24,12 @@ export default function SalePage() {
   const addRow    = () => setItems(prev => [...prev, newItem()])
   const removeRow = (id: number) => { if (items.length > 1) setItems(prev => prev.filter(i => i.id !== id)) }
 
-  const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    files.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        setImages(prev => [...prev, { name: file.name, url: reader.result as string }])
-      }
-      reader.readAsDataURL(file)
-    })
-    e.target.value = ''
-  }
-
-  const removeImage = (name: string) =>
-    setImages(prev => prev.filter(i => i.name !== name))
-
   const total      = items.reduce((s, i) => s + (parseFloat(i.weight) || 0) * (parseFloat(i.price) || 0), 0)
   const validItems = items.filter(i => i.name && parseFloat(i.weight) > 0)
 
   const handleSubmit = () => {
     if (!buyerName)              { alert('กรุณาใส่ชื่อผู้ซื้อ'); return }
     if (validItems.length === 0) { alert('กรุณาเพิ่มรายการสินค้า'); return }
-    if (images.length === 0)     { alert('กรุณาแนบหลักฐานใบเสร็จอย่างน้อย 1 รูป'); return }
 
     const now       = new Date()
     const receiptNo = `SAL-${now.getTime()}`
@@ -121,6 +103,7 @@ export default function SalePage() {
                     priceField="sellPrice"
                     onSelect={p => selectProduct(item.id, p)}
                     onChange={s => updateItem(item.id, { search: s, open: true, code: '', name: '' })}
+                    onClose={() => updateItem(item.id, { open: false })}
                   />
                 </div>
                 <div className="col-span-2">
@@ -148,73 +131,11 @@ export default function SalePage() {
         </div>
       </div>
 
-      {/* แนบหลักฐาน */}
-      <div className="card p-5 space-y-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <p className="text-sm font-semibold text-slate-700">
-              📎 แนบหลักฐานใบเสร็จ <span className="text-red-400">*</span>
-            </p>
-            <p className="text-xs text-slate-400 mt-0.5">
-              บังคับแนบ — ป้องกันการปลอมใบเสร็จและการทุจริต
-            </p>
-          </div>
-          <button onClick={() => fileRef.current?.click()}
-            className="btn-secondary flex items-center gap-2 text-sm">
-            📷 เลือกรูป
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
-            onChange={handleImages} />
-        </div>
-
-        {images.length === 0 ? (
-          <div
-            onClick={() => fileRef.current?.click()}
-            className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center cursor-pointer hover:border-brand-400 hover:bg-brand-50 transition-colors">
-            <p className="text-3xl mb-2">🖼️</p>
-            <p className="text-sm text-slate-400">กดเพื่อเลือกรูปภาพใบเสร็จ</p>
-            <p className="text-xs text-slate-300 mt-1">รองรับ JPG, PNG — เลือกได้หลายรูป</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {images.map(img => (
-              <div key={img.name} className="relative group">
-                <img src={img.url} alt={img.name}
-                  className="w-full h-36 object-cover rounded-lg border border-slate-200" />
-                <button
-                  onClick={() => removeImage(img.name)}
-                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 text-xs
-                             opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  ✕
-                </button>
-                <p className="text-xs text-slate-400 mt-1 truncate">{img.name}</p>
-              </div>
-            ))}
-            <button onClick={() => fileRef.current?.click()}
-              className="h-36 border-2 border-dashed border-slate-200 rounded-lg flex flex-col items-center justify-center text-slate-400 hover:border-brand-400 hover:text-brand-500 transition-colors">
-              <span className="text-2xl">+</span>
-              <span className="text-xs mt-1">เพิ่มรูป</span>
-            </button>
-          </div>
-        )}
-
-        {images.length > 0 && (
-          <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">
-            <span>✅</span>
-            <span>แนบหลักฐานแล้ว {images.length} รูป</span>
-          </div>
-        )}
-      </div>
-
       <button onClick={handleSubmit}
-        disabled={!buyerName || validItems.length === 0 || images.length === 0}
+        disabled={!buyerName || validItems.length === 0}
         className="btn-primary w-full py-3 text-base flex items-center justify-center gap-2">
         💾 บันทึกขายออก
       </button>
-
-      {images.length === 0 && (
-        <p className="text-center text-xs text-red-400">⚠️ ต้องแนบหลักฐานใบเสร็จก่อนบันทึก</p>
-      )}
 
     </div>
   )

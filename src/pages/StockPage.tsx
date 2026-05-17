@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { loadProducts } from '../data/products'
 import {
   loadCategories,
   loadCatAssignments,
   getCatKey,
-  getCatColor,
 } from '../data/categories'
 
 const STORAGE_KEY = 'kankrong_stock'
@@ -53,6 +51,49 @@ export default function StockPage() {
   const categories  = loadCategories()
   const assignments = loadCatAssignments()
 
+  const handlePrint = () => {
+    const date = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+    const rows = (catFilter === 'all' ? allRows : allRows.filter(r => r.catKey === catFilter))
+      .filter(r => !search || r.name.includes(search) || r.code.toLowerCase().includes(search.toLowerCase()))
+    const totalW = rows.reduce((s, r) => s + r.weight, 0)
+    const rowsHtml = rows.map(r => {
+      const catObj = categories.find(c => c.key === r.catKey)
+      return `<tr>
+        <td>${r.code}</td>
+        <td>${r.name}</td>
+        <td>${catObj?.label ?? r.catKey}</td>
+        <td style="text-align:right">${r.weight.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
+      </tr>`
+    }).join('')
+    const win = window.open('', '_blank', 'width=800,height=600')
+    if (!win) return
+    win.document.write(`<!DOCTYPE html><html><head>
+      <meta charset="utf-8" />
+      <title>รายงานสต็อกคงเหลือ</title>
+      <style>
+        body { font-family: 'Noto Sans Thai', Tahoma, sans-serif; padding: 24px; color: #1e293b; }
+        h2 { margin: 0 0 4px; font-size: 18px; }
+        p  { margin: 0 0 16px; color: #64748b; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { border: 1px solid #e2e8f0; padding: 6px 10px; }
+        th { background: #f8fafc; font-weight: 600; text-align: left; }
+        tfoot td { background: #f1f5f9; font-weight: 700; }
+        @media print { body { padding: 0; } }
+      </style>
+    </head><body>
+      <h2>รายงานสต็อกคงเหลือ</h2>
+      <p>ข้อมูล ณ ${date} · ${rows.length} รายการ</p>
+      <table>
+        <thead><tr><th>รหัส</th><th>ชื่อสินค้า</th><th>หมวดหมู่</th><th style="text-align:right">น้ำหนัก (กก.)</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+        <tfoot><tr><td colspan="3">รวม ${rows.length} รายการ</td><td style="text-align:right">${totalW.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td></tr></tfoot>
+      </table>
+    </body></html>`)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print() }, 300)
+  }
+
   const allRows = products
     .filter(p => editMode || (stock[p.code] ?? 0) > 0)
     .map(p => ({
@@ -68,16 +109,6 @@ export default function StockPage() {
 
   const totalWeight   = Object.values(stock).reduce((s, w) => s + w, 0)
   const inStockCount  = Object.values(stock).filter(w => w > 0).length
-
-  // Pie chart data: weight per category
-  const pieData = categories
-    .map((cat, idx) => ({
-      name:  cat.label,
-      key:   cat.key,
-      value: allRows.filter(r => r.catKey === cat.key).reduce((s, r) => s + r.weight, 0),
-      color: getCatColor(cat.key, idx),
-    }))
-    .filter(d => d.value > 0)
 
   const thDate = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -129,9 +160,14 @@ export default function StockPage() {
               <button onClick={saveEdit}   className="btn-primary  text-sm py-1.5 px-4">บันทึกสต็อก</button>
             </>
           ) : (
-            <button onClick={startEdit} className="btn-secondary text-sm py-1.5 px-4">
-              ✏️ แก้ไขสต็อก
-            </button>
+            <>
+              <button onClick={handlePrint} className="btn-secondary text-sm py-1.5 px-4">
+                🖨️ พิมพ์/PDF
+              </button>
+              <button onClick={startEdit} className="btn-secondary text-sm py-1.5 px-4">
+                ✏️ แก้ไขสต็อก
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -154,44 +190,6 @@ export default function StockPage() {
           </p>
           <p className="text-xs text-slate-400 mt-1">รวมทุกหมวดหมู่</p>
         </div>
-      </div>
-
-      {/* Pie chart card */}
-      <div className="card p-5">
-        <h3 className="text-sm font-semibold text-slate-700 mb-4">สรุปตามหมวดหมู่</h3>
-        {pieData.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-8">ไม่มีข้อมูลสต็อก</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <PieChart>
-              <Pie
-                data={pieData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                innerRadius={65}
-                outerRadius={105}
-                paddingAngle={2}
-              >
-                {pieData.map((entry, idx) => (
-                  <Cell key={entry.key} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value) => {
-                  const n = typeof value === 'number' ? value : 0
-                  return [`${n.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} กก.`, 'น้ำหนัก']
-                }}
-              />
-              <Legend
-                formatter={(value) => (
-                  <span className="text-xs text-slate-600">{value}</span>
-                )}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        )}
       </div>
 
       {/* Search + Category filter */}
