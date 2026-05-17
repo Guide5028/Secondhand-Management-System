@@ -7,6 +7,7 @@ const NAV = [
   { to: '/sale',      label: 'ขายออก',          icon: '⬆️' },
   { to: '/history',   label: 'ประวัติรายการ',   icon: '📋' },
   { to: '/daily',     label: 'P&L รายวัน',      icon: '📝' },
+  { to: '/workers',   label: 'คนงาน',           icon: '👷' },
   { to: '/products',  label: 'จัดการสินค้า',    icon: '⚙️' },
 ]
 

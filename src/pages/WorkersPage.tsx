@@ -4,17 +4,16 @@ import {
   loadAttendance, upsertAttendance,
   loadAdvances, saveAdvances,
   loadSpecialDays, saveSpecialDays,
-  calcMonthlyWage, isSunday, defaultDayType,
+  calcMonthlyWageChaisila, isSunday, defaultDayType,
   type Worker, type AttendanceRecord, type AdvanceRecord,
   type SpecialDay, type Shop, type DayType,
 } from '../data/workers'
 
 type Tab = 'workers' | 'attendance' | 'summary'
 
-const SHOP_LABEL: Record<Shop, string>    = { chaisila: 'Chaisila', mvp: 'MVP' }
-const SHOP_COLOR: Record<Shop, string>    = { chaisila: 'bg-brand-100 text-brand-700', mvp: 'bg-blue-100 text-blue-700' }
-const DAY_LABEL: Record<DayType, string>  = { full: 'เต็มวัน', half: 'ครึ่งวัน', absent: 'หยุด', holiday: 'วันหยุด' }
-const DAY_COLOR: Record<DayType, string>  = {
+const SHOP_LABEL: Record<Shop, string>   = { chaisila: 'Chaisila', mvp: 'MVP' }
+const DAY_LABEL: Record<DayType, string> = { full: 'เต็มวัน', half: 'ครึ่งวัน', absent: 'หยุด', holiday: 'วันหยุด' }
+const DAY_COLOR: Record<DayType, string> = {
   full:    'bg-green-100 text-green-700',
   half:    'bg-amber-100 text-amber-700',
   absent:  'bg-slate-100 text-slate-400',
@@ -22,12 +21,8 @@ const DAY_COLOR: Record<DayType, string>  = {
 }
 
 const fmt = (n: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 0 }).format(n)
-const today = new Date().toISOString().slice(0, 10)
-const currentYM = today.slice(0, 7)
-
-function todayHHMM(): string {
-  return new Date().toTimeString().slice(0, 5)
-}
+const today      = new Date().toISOString().slice(0, 10)
+const currentYM  = today.slice(0, 7)
 
 // ─── Tab 1: Workers Management ────────────────────────────────
 
@@ -49,42 +44,30 @@ function WorkersTab() {
       active: true,
     }
     const updated = [...workers, w]
-    setWorkers(updated)
-    saveWorkers(updated)
+    setWorkers(updated); saveWorkers(updated)
     setDraft({ name: '', dailyWage: '', defaultShop: 'chaisila' })
-    setAdding(false)
-    flash()
+    setAdding(false); flash()
   }
 
   const toggleActive = (id: string) => {
     const updated = workers.map(w => w.id === id ? { ...w, active: !w.active } : w)
-    setWorkers(updated)
-    saveWorkers(updated)
+    setWorkers(updated); saveWorkers(updated)
   }
 
-  const startEdit = (w: Worker) => {
-    setEditing(w.id)
-    setEditDraft({ name: w.name, dailyWage: w.dailyWage, defaultShop: w.defaultShop })
-  }
+  const startEdit = (w: Worker) => { setEditing(w.id); setEditDraft({ name: w.name, dailyWage: w.dailyWage, defaultShop: w.defaultShop }) }
 
   const commitEdit = () => {
     if (!editing) return
     const updated = workers.map(w =>
-      w.id === editing
-        ? { ...w, ...editDraft, dailyWage: Number(editDraft.dailyWage) || w.dailyWage }
-        : w
+      w.id === editing ? { ...w, ...editDraft, dailyWage: Number(editDraft.dailyWage) || w.dailyWage } : w
     )
-    setWorkers(updated)
-    saveWorkers(updated)
-    setEditing(null)
-    flash()
+    setWorkers(updated); saveWorkers(updated); setEditing(null); flash()
   }
 
   const handleDelete = (id: string) => {
     if (!confirm('ต้องการลบคนงานคนนี้?')) return
     const updated = workers.filter(w => w.id !== id)
-    setWorkers(updated)
-    saveWorkers(updated)
+    setWorkers(updated); saveWorkers(updated)
   }
 
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1800) }
@@ -124,30 +107,24 @@ function WorkersTab() {
                 return (
                   <tr key={w.id} className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${!w.active ? 'opacity-50' : ''}`}>
                     <td className="px-5 py-3">
-                      {isEditing ? (
-                        <input className="input text-sm py-1" value={editDraft.name ?? ''} onChange={e => setEditDraft(p => ({ ...p, name: e.target.value }))} />
-                      ) : (
-                        <span className="font-medium text-slate-800">{w.name}</span>
-                      )}
+                      {isEditing
+                        ? <input className="input text-sm py-1" value={editDraft.name ?? ''} onChange={e => setEditDraft(p => ({ ...p, name: e.target.value }))} />
+                        : <span className="font-medium text-slate-800">{w.name}</span>}
                     </td>
                     <td className="px-5 py-3">
-                      {isEditing ? (
-                        <select className="input text-xs py-1" value={editDraft.defaultShop ?? 'chaisila'} onChange={e => setEditDraft(p => ({ ...p, defaultShop: e.target.value as Shop }))}>
-                          <option value="chaisila">Chaisila</option>
-                          <option value="mvp">MVP</option>
-                        </select>
-                      ) : (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${SHOP_COLOR[w.defaultShop]}`}>
-                          {SHOP_LABEL[w.defaultShop]}
-                        </span>
-                      )}
+                      {isEditing
+                        ? <select className="input text-xs py-1" value={editDraft.defaultShop ?? 'chaisila'} onChange={e => setEditDraft(p => ({ ...p, defaultShop: e.target.value as Shop }))}>
+                            <option value="chaisila">Chaisila</option>
+                            <option value="mvp">MVP</option>
+                          </select>
+                        : <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${w.defaultShop === 'chaisila' ? 'bg-brand-100 text-brand-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {SHOP_LABEL[w.defaultShop]}
+                          </span>}
                     </td>
                     <td className="px-5 py-3 text-right font-mono">
-                      {isEditing ? (
-                        <input type="number" className="input text-sm py-1 text-right font-mono w-28 ml-auto block" value={editDraft.dailyWage ?? ''} onChange={e => setEditDraft(p => ({ ...p, dailyWage: Number(e.target.value) }))} />
-                      ) : (
-                        <span>฿{fmt(w.dailyWage)}</span>
-                      )}
+                      {isEditing
+                        ? <input type="number" className="input text-sm py-1 text-right font-mono w-28 ml-auto block" value={editDraft.dailyWage ?? ''} onChange={e => setEditDraft(p => ({ ...p, dailyWage: Number(e.target.value) }))} />
+                        : <span>฿{fmt(w.dailyWage)}</span>}
                     </td>
                     <td className="px-5 py-3 text-center">
                       <button onClick={() => toggleActive(w.id)} className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${w.active ? 'bg-green-100 text-green-700 hover:bg-red-50 hover:text-red-500' : 'bg-slate-100 text-slate-400 hover:bg-green-50 hover:text-green-600'}`}>
@@ -155,17 +132,15 @@ function WorkersTab() {
                       </button>
                     </td>
                     <td className="px-5 py-3 text-right">
-                      {isEditing ? (
-                        <div className="flex gap-1 justify-end">
-                          <button onClick={commitEdit} className="text-xs bg-brand-600 text-white px-2 py-1 rounded">บันทึก</button>
-                          <button onClick={() => setEditing(null)} className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded">ยกเลิก</button>
-                        </div>
-                      ) : (
-                        <div className="flex gap-1 justify-end">
-                          <button onClick={() => startEdit(w)} className="text-xs text-slate-400 hover:text-brand-500 transition-colors px-1">✎</button>
-                          <button onClick={() => handleDelete(w.id)} className="text-xs text-slate-200 hover:text-red-400 transition-colors px-1">✕</button>
-                        </div>
-                      )}
+                      {isEditing
+                        ? <div className="flex gap-1 justify-end">
+                            <button onClick={commitEdit} className="text-xs bg-brand-600 text-white px-2 py-1 rounded">บันทึก</button>
+                            <button onClick={() => setEditing(null)} className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded">ยกเลิก</button>
+                          </div>
+                        : <div className="flex gap-1 justify-end">
+                            <button onClick={() => startEdit(w)} className="text-xs text-slate-400 hover:text-brand-500 transition-colors px-1">✎</button>
+                            <button onClick={() => handleDelete(w.id)} className="text-xs text-slate-200 hover:text-red-400 transition-colors px-1">✕</button>
+                          </div>}
                     </td>
                   </tr>
                 )
@@ -227,7 +202,6 @@ function AttendanceTab() {
   const special       = specialDays.find(s => s.date === selDate)
   const isSun         = isSunday(selDate)
 
-  // Get or create attendance record for a worker on selDate
   const getRecord = (workerId: string): AttendanceRecord => {
     const existing = attendance.find(r => r.workerId === workerId && r.date === selDate)
     if (existing) return existing
@@ -250,25 +224,23 @@ function AttendanceTab() {
     setAttendance(loadAttendance())
   }
 
-  const checkInNow = (workerId: string) => {
-    updateRecord(workerId, { checkIn: todayHHMM(), dayType: 'half' })
+  const toggleCheckIn = (workerId: string) => {
+    const rec = getRecord(workerId)
+    // ถ้ายังไม่ได้เข้างาน → เข้างาน; ถ้าเข้าแล้ว → เอาออก
+    updateRecord(workerId, { checkIn: rec.checkIn ? '' : 'checked' })
   }
 
-  // Special day management
   const markSpecial = () => {
     if (!specialDraft.label.trim()) return
     const updated = specialDays.filter(s => s.date !== selDate)
     updated.push({ date: selDate, type: specialDraft.type, label: specialDraft.label.trim() })
-    setSpecialDays(updated)
-    saveSpecialDays(updated)
-    setShowSpecial(false)
-    setSpecialDraft({ type: 'holiday', label: '' })
+    setSpecialDays(updated); saveSpecialDays(updated)
+    setShowSpecial(false); setSpecialDraft({ type: 'holiday', label: '' })
   }
 
   const removeSpecial = () => {
     const updated = specialDays.filter(s => s.date !== selDate)
-    setSpecialDays(updated)
-    saveSpecialDays(updated)
+    setSpecialDays(updated); saveSpecialDays(updated)
   }
 
   const thDate = new Date(selDate).toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
@@ -283,7 +255,7 @@ function AttendanceTab() {
         </div>
         <div className="flex-1">
           <p className="text-sm font-semibold text-slate-700">{thDate}</p>
-          <div className="flex gap-2 mt-1">
+          <div className="flex flex-wrap gap-2 mt-1">
             {isSun && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">วันอาทิตย์ (ครึ่งวัน)</span>}
             {special && (
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${special.type === 'holiday' ? 'bg-red-100 text-red-600' : 'bg-purple-100 text-purple-700'}`}>
@@ -293,15 +265,9 @@ function AttendanceTab() {
           </div>
         </div>
         <div className="flex gap-2">
-          {special ? (
-            <button onClick={removeSpecial} className="text-xs text-red-400 hover:text-red-600 border border-red-200 px-2.5 py-1.5 rounded-lg transition-colors">
-              ลบวันพิเศษ
-            </button>
-          ) : (
-            <button onClick={() => setShowSpecial(true)} className="btn-secondary text-xs py-1.5 px-3">
-              + วันพิเศษ/หยุด
-            </button>
-          )}
+          {special
+            ? <button onClick={removeSpecial} className="text-xs text-red-400 hover:text-red-600 border border-red-200 px-2.5 py-1.5 rounded-lg transition-colors">ลบวันพิเศษ</button>
+            : <button onClick={() => setShowSpecial(true)} className="btn-secondary text-xs py-1.5 px-3">+ วันพิเศษ/หยุด</button>}
         </div>
       </div>
 
@@ -314,13 +280,25 @@ function AttendanceTab() {
         <div className="space-y-3">
           {activeWorkers.map(w => {
             const rec = getRecord(w.id)
+            const checkedIn = !!rec.checkIn
             return (
-              <div key={w.id} className="card p-4">
+              <div key={w.id} className={`card p-4 transition-colors ${checkedIn ? 'border-green-200 bg-green-50/30' : ''}`}>
                 <div className="flex flex-wrap gap-3 items-center">
-                  {/* Name + shop */}
+
+                  {/* Name */}
                   <div className="flex-1 min-w-40">
-                    <p className="font-semibold text-slate-800">{w.name}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">ค่าแรง ฿{fmt(w.dailyWage)}/วัน</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-slate-800">{w.name}</p>
+                      {w.defaultShop === 'mvp' && (
+                        <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">MVP</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      ฿{fmt(w.dailyWage)}/วัน
+                      {w.defaultShop === 'mvp' && (
+                        <span className="ml-1 text-blue-400">(คิดค่าแรงเฉพาะวันที่ Chaisila)</span>
+                      )}
+                    </p>
                   </div>
 
                   {/* Shop selector */}
@@ -356,31 +334,23 @@ function AttendanceTab() {
                     ))}
                   </div>
 
-                  {/* Check-in */}
-                  <div className="flex items-center gap-2">
-                    {rec.checkIn ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-slate-400">เข้างาน</span>
-                        <input
-                          type="time"
-                          className="text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-brand-400 font-mono"
-                          value={rec.checkIn}
-                          onChange={e => updateRecord(w.id, { checkIn: e.target.value })}
-                        />
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => checkInNow(w.id)}
-                        className="text-xs bg-brand-50 text-brand-600 border border-brand-200 px-3 py-1.5 rounded-lg hover:bg-brand-100 transition-colors font-medium"
-                      >
-                        🕐 เข้างาน
-                      </button>
-                    )}
-                  </div>
+                  {/* Check-in toggle */}
+                  <button
+                    onClick={() => toggleCheckIn(w.id)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors
+                      ${checkedIn
+                        ? 'bg-green-500 text-white border-green-500 hover:bg-green-600'
+                        : 'bg-white text-slate-500 border-slate-200 hover:border-green-400 hover:text-green-600'}`}
+                  >
+                    {checkedIn ? '✓ เข้างานแล้ว' : '🕐 เข้างาน'}
+                  </button>
 
                   {/* Status badge */}
                   <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${DAY_COLOR[rec.dayType]}`}>
                     {DAY_LABEL[rec.dayType]}
+                    {rec.shop === 'mvp' && rec.dayType !== 'absent' && rec.dayType !== 'holiday' && (
+                      <span className="ml-1 opacity-70">(MVP)</span>
+                    )}
                   </span>
                 </div>
 
@@ -424,7 +394,10 @@ function AttendanceTab() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-600 mb-1">รายละเอียด</label>
-                <input autoFocus className="input" placeholder="เช่น ขึ้นบ้านใหม่, วันนักขัตฤกษ์..." value={specialDraft.label} onChange={e => setSpecialDraft(p => ({ ...p, label: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') markSpecial() }} />
+                <input autoFocus className="input" placeholder="เช่น ขึ้นบ้านใหม่, วันนักขัตฤกษ์..."
+                  value={specialDraft.label}
+                  onChange={e => setSpecialDraft(p => ({ ...p, label: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') markSpecial() }} />
               </div>
             </div>
             <div className="flex gap-2 justify-end">
@@ -436,6 +409,123 @@ function AttendanceTab() {
       )}
     </div>
   )
+}
+
+// ─── Monthly Receipt Print ─────────────────────────────────────
+
+function printWorkerReceipt(
+  worker: Worker,
+  ym: string,
+  attendance: AttendanceRecord[],
+  advances: AdvanceRecord[],
+) {
+  const MONTH_NAMES = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+  const [y, m] = ym.split('-').map(Number)
+  const monthStr = `${MONTH_NAMES[m - 1]} ${y + 543}`
+
+  const recs    = attendance.filter(r => r.workerId === worker.id && r.date.startsWith(ym))
+  const advRecs = advances.filter(a => a.workerId === worker.id && a.date.startsWith(ym))
+  const { fullDays, halfDays, absentDays, mvpDays, wage } = calcMonthlyWageChaisila(worker, ym, attendance)
+  const totalAdv = advRecs.reduce((s, a) => s + a.amount, 0)
+  const net      = wage - totalAdv
+
+  const fmt = (n: number) => new Intl.NumberFormat('th-TH').format(Math.round(n))
+  const thDate = (iso: string) => new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+
+  const attendRows = recs
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(r => {
+      const dayLabel: Record<string, string> = { full: 'เต็มวัน', half: 'ครึ่งวัน', absent: 'หยุด', holiday: 'วันหยุด' }
+      const isMVP  = r.shop === 'mvp'
+      const dayWage = isMVP ? 0 : (r.dayType === 'full' ? worker.dailyWage : r.dayType === 'half' ? worker.dailyWage / 2 : 0)
+      return `<tr>
+        <td>${thDate(r.date)}</td>
+        <td style="text-align:center">${r.shop === 'chaisila' ? 'Chaisila' : 'MVP'}</td>
+        <td style="text-align:center">${dayLabel[r.dayType] ?? r.dayType}${isMVP ? ' <em style="color:#94a3b8;font-size:11px">(ไม่คิดค่าแรง)</em>' : ''}</td>
+        <td style="text-align:right">${dayWage > 0 ? fmt(dayWage) : '—'}</td>
+        <td>${r.note || ''}</td>
+      </tr>`
+    }).join('')
+
+  const advRows = advRecs
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(a => `<tr>
+      <td>${thDate(a.date)}</td>
+      <td colspan="3" style="text-align:left">${a.note || 'เบิกเงิน'}</td>
+      <td style="text-align:right; color:#ef4444">−${fmt(a.amount)}</td>
+    </tr>`).join('')
+
+  const win = window.open('', '_blank', 'width=720,height=800')
+  if (!win) return
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="utf-8"/>
+    <title>ใบสรุปค่าแรง — ${worker.name}</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: 'Noto Sans Thai', Tahoma, sans-serif; padding: 32px; color: #1e293b; font-size: 13px; max-width: 680px; margin: 0 auto; }
+      h2  { margin: 0 0 2px; font-size: 20px; }
+      .sub { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+      .info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; }
+      .info-item label { font-size: 11px; color: #94a3b8; display: block; }
+      .info-item span  { font-size: 14px; font-weight: 600; }
+      table  { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+      th, td { border: 1px solid #e2e8f0; padding: 6px 10px; }
+      th     { background: #f8fafc; font-weight: 600; font-size: 12px; color: #475569; }
+      .section-title { font-size: 13px; font-weight: 600; margin: 16px 0 6px; color: #334155; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }
+      .summary { background: #f1f5f9; border-radius: 8px; padding: 16px; margin-top: 16px; }
+      .summary-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+      .summary-row.total { font-size: 16px; font-weight: 700; border-top: 2px solid #cbd5e1; margin-top: 8px; padding-top: 8px; }
+      .net-positive { color: #16a34a; }
+      .net-negative { color: #dc2626; }
+      .footer { margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+      .sig-box { border-top: 1px solid #94a3b8; padding-top: 8px; text-align: center; font-size: 12px; color: #94a3b8; }
+      @media print { body { padding: 16px; } }
+    </style>
+  </head><body>
+    <h2>ใบสรุปค่าแรงประจำเดือน</h2>
+    <div class="sub">ไชยศิลา ค้าของเก่า &nbsp;|&nbsp; Chaisila Recycle</div>
+
+    <div class="info">
+      <div class="info-item"><label>ชื่อคนงาน</label><span>${worker.name}</span></div>
+      <div class="info-item"><label>เดือน</label><span>${monthStr}</span></div>
+      <div class="info-item"><label>ค่าแรงเต็มวัน</label><span>฿${fmt(worker.dailyWage)}/วัน</span></div>
+      <div class="info-item"><label>ร้านหลัก</label><span>${worker.defaultShop === 'chaisila' ? 'Chaisila' : 'MVP (คิดค่าแรงเฉพาะวัน Chaisila)'}</span></div>
+    </div>
+
+    <div class="section-title">บันทึกการเข้างาน (${recs.length} วัน)</div>
+    <table>
+      <thead><tr><th>วันที่</th><th>ร้าน</th><th>ประเภท</th><th style="text-align:right">ค่าแรง (฿)</th><th>หมายเหตุ</th></tr></thead>
+      <tbody>${attendRows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8">ไม่มีบันทึกการเข้างาน</td></tr>'}</tbody>
+    </table>
+
+    <div class="section-title">รายการเบิกเงิน (${advRecs.length} รายการ)</div>
+    ${advRows
+      ? `<table>
+          <thead><tr><th>วันที่</th><th colspan="3">รายละเอียด</th><th style="text-align:right">จำนวน (฿)</th></tr></thead>
+          <tbody>${advRows}</tbody>
+        </table>`
+      : '<p style="color:#94a3b8;font-size:12px;margin:4px 0 16px">ไม่มีรายการเบิก</p>'}
+
+    <div class="summary">
+      <div class="summary-row"><span>วันทำงาน Chaisila: เต็มวัน ${fullDays} วัน × ฿${fmt(worker.dailyWage)}</span><span>฿${fmt(fullDays * worker.dailyWage)}</span></div>
+      <div class="summary-row"><span>วันทำงาน Chaisila: ครึ่งวัน ${halfDays} วัน × ฿${fmt(worker.dailyWage / 2)}</span><span>฿${fmt(halfDays * (worker.dailyWage / 2))}</span></div>
+      ${mvpDays > 0 ? `<div class="summary-row" style="color:#94a3b8"><span>วันทำงาน MVP ${mvpDays} วัน (ไม่คิดค่าแรง)</span><span>—</span></div>` : ''}
+      <div class="summary-row"><span>หยุดงาน/วันหยุด ${absentDays} วัน</span><span>—</span></div>
+      <div class="summary-row" style="color:#ef4444"><span>เบิกเงินทั้งหมด</span><span>−฿${fmt(totalAdv)}</span></div>
+      <div class="summary-row total ${net >= 0 ? 'net-positive' : 'net-negative'}">
+        <span>💰 ยอดค้างจ่าย</span>
+        <span>฿${fmt(net)}</span>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="sig-box">ลายเซ็นคนงาน<br/><br/>(......................................)</div>
+      <div class="sig-box">ลายเซ็นผู้จ่าย<br/><br/>(......................................)</div>
+    </div>
+  </body></html>`)
+  win.document.close()
+  win.focus()
+  setTimeout(() => win.print(), 300)
 }
 
 // ─── Tab 3: Advances & Monthly Summary ───────────────────────
@@ -460,33 +550,24 @@ function SummaryTab() {
       note: advDraft.note,
     }
     const updated = [...advances, rec]
-    setAdvances(updated)
-    saveAdvances(updated)
+    setAdvances(updated); saveAdvances(updated)
     setAdvDraft({ workerId: '', amount: '', date: today, note: '' })
     setAddOpen(false)
   }
 
   const deleteAdvance = (id: string) => {
     const updated = advances.filter(a => a.id !== id)
-    setAdvances(updated)
-    saveAdvances(updated)
+    setAdvances(updated); saveAdvances(updated)
   }
 
-  // Monthly wage summary per worker
   const summary = useMemo(() => activeWorkers.map(w => {
-    const wage   = calcMonthlyWage(w, selYM, attendance)
-    const totalAdv = advances
-      .filter(a => a.workerId === w.id && a.date.startsWith(selYM))
-      .reduce((s, a) => s + a.amount, 0)
-    return { worker: w, ...wage, advances: totalAdv, net: wage.wage - totalAdv }
+    const wage   = calcMonthlyWageChaisila(w, selYM, attendance)
+    const totalAdv = advances.filter(a => a.workerId === w.id && a.date.startsWith(selYM)).reduce((s, a) => s + a.amount, 0)
+    return { worker: w, ...wage, advancesTotal: totalAdv, net: wage.wage - totalAdv }
   }), [activeWorkers, selYM, attendance, advances])
 
-  // Advances for selected month
-  const monthAdvances = advances
-    .filter(a => a.date.startsWith(selYM))
-    .sort((a, b) => b.date.localeCompare(a.date))
+  const monthAdvances = advances.filter(a => a.date.startsWith(selYM)).sort((a, b) => b.date.localeCompare(a.date))
 
-  // Months list from attendance
   const allMonths = useMemo(() => {
     const set = new Set<string>()
     attendance.forEach(r => set.add(r.date.slice(0, 7)))
@@ -495,11 +576,8 @@ function SummaryTab() {
     return Array.from(set).sort().reverse()
   }, [attendance, advances])
 
-  const thMonth = (ym: string) => {
-    const [y, m] = ym.split('-')
-    return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString('th-TH', { year: 'numeric', month: 'long' })
-  }
-
+  const MONTH_NAMES = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+  const thMonth = (ym: string) => { const [y,m] = ym.split('-').map(Number); return `${MONTH_NAMES[m-1]} ${y+543}` }
   const workerName = (id: string) => workers.find(w => w.id === id)?.name ?? id
 
   return (
@@ -509,9 +587,7 @@ function SummaryTab() {
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">เดือน</label>
           <select className="input text-sm" value={selYM} onChange={e => setSelYM(e.target.value)}>
-            {allMonths.map(ym => (
-              <option key={ym} value={ym}>{thMonth(ym)}</option>
-            ))}
+            {allMonths.map(ym => <option key={ym} value={ym}>{thMonth(ym)}</option>)}
           </select>
         </div>
         <div className="flex-1" />
@@ -520,7 +596,10 @@ function SummaryTab() {
 
       {/* Monthly wage summary */}
       <div>
-        <h3 className="text-sm font-semibold text-slate-700 mb-3">สรุปเงินเดือน — {thMonth(selYM)}</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-slate-700">สรุปเงินเดือน — {thMonth(selYM)}</h3>
+          <p className="text-xs text-slate-400">* คิดค่าแรงเฉพาะวันทำงานที่ Chaisila</p>
+        </div>
         {activeWorkers.length === 0 ? (
           <div className="card px-5 py-10 text-center text-slate-400 text-sm">ยังไม่มีคนงาน</div>
         ) : (
@@ -531,13 +610,15 @@ function SummaryTab() {
                   <th className="px-5 py-3 text-left">ชื่อ</th>
                   <th className="px-5 py-3 text-center">เต็มวัน</th>
                   <th className="px-5 py-3 text-center">ครึ่งวัน</th>
+                  <th className="px-5 py-3 text-center">MVP</th>
                   <th className="px-5 py-3 text-right">ค่าแรงรวม</th>
                   <th className="px-5 py-3 text-right">เบิกแล้ว</th>
-                  <th className="px-5 py-3 text-right font-semibold">ยังค้างจ่าย</th>
+                  <th className="px-5 py-3 text-right font-semibold">ค้างจ่าย</th>
+                  <th className="px-5 py-3 w-12" />
                 </tr>
               </thead>
               <tbody>
-                {summary.map(({ worker: w, fullDays, halfDays, wage, advances: adv, net }) => (
+                {summary.map(({ worker: w, fullDays, halfDays, mvpDays, wage, advancesTotal: adv, net }) => (
                   <tr key={w.id} className="border-b border-slate-50 hover:bg-slate-50/60">
                     <td className="px-5 py-3">
                       <p className="font-medium text-slate-800">{w.name}</p>
@@ -545,14 +626,20 @@ function SummaryTab() {
                     </td>
                     <td className="px-5 py-3 text-center font-mono text-green-700">{fullDays}</td>
                     <td className="px-5 py-3 text-center font-mono text-amber-600">{halfDays}</td>
+                    <td className="px-5 py-3 text-center font-mono text-blue-400">{mvpDays || '—'}</td>
                     <td className="px-5 py-3 text-right font-mono font-medium">฿{fmt(wage)}</td>
-                    <td className="px-5 py-3 text-right font-mono text-red-500">
-                      {adv > 0 ? `−฿${fmt(adv)}` : '—'}
-                    </td>
+                    <td className="px-5 py-3 text-right font-mono text-red-500">{adv > 0 ? `−฿${fmt(adv)}` : '—'}</td>
                     <td className="px-5 py-3 text-right">
-                      <span className={`font-mono font-bold text-sm ${net >= 0 ? 'text-slate-800' : 'text-red-600'}`}>
-                        ฿{fmt(net)}
-                      </span>
+                      <span className={`font-mono font-bold text-sm ${net >= 0 ? 'text-slate-800' : 'text-red-600'}`}>฿{fmt(net)}</span>
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      <button
+                        onClick={() => printWorkerReceipt(w, selYM, attendance, advances)}
+                        title="พิมพ์ใบสรุปค่าแรง"
+                        className="text-xs text-slate-400 hover:text-brand-600 transition-colors"
+                      >
+                        🖨️
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -562,9 +649,11 @@ function SummaryTab() {
                   <td className="px-5 py-3 text-slate-500">รวมทั้งหมด</td>
                   <td className="px-5 py-3 text-center font-mono">{summary.reduce((s, r) => s + r.fullDays, 0)}</td>
                   <td className="px-5 py-3 text-center font-mono">{summary.reduce((s, r) => s + r.halfDays, 0)}</td>
+                  <td className="px-5 py-3 text-center font-mono text-blue-400">{summary.reduce((s, r) => s + r.mvpDays, 0) || '—'}</td>
                   <td className="px-5 py-3 text-right font-mono">฿{fmt(summary.reduce((s, r) => s + r.wage, 0))}</td>
-                  <td className="px-5 py-3 text-right font-mono text-red-500">−฿{fmt(summary.reduce((s, r) => s + r.advances, 0))}</td>
+                  <td className="px-5 py-3 text-right font-mono text-red-500">−฿{fmt(summary.reduce((s, r) => s + r.advancesTotal, 0))}</td>
                   <td className="px-5 py-3 text-right font-mono font-bold text-slate-800">฿{fmt(summary.reduce((s, r) => s + r.net, 0))}</td>
+                  <td />
                 </tr>
               </tfoot>
             </table>
@@ -592,9 +681,7 @@ function SummaryTab() {
               <tbody>
                 {monthAdvances.map(a => (
                   <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50/60 group">
-                    <td className="px-5 py-3 text-slate-400 font-mono text-xs">
-                      {new Date(a.date).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
-                    </td>
+                    <td className="px-5 py-3 text-slate-400 font-mono text-xs">{new Date(a.date).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}</td>
                     <td className="px-5 py-3 font-medium text-slate-700">{workerName(a.workerId)}</td>
                     <td className="px-5 py-3 text-slate-500 text-xs">{a.note || '—'}</td>
                     <td className="px-5 py-3 text-right font-mono font-semibold text-red-500">฿{fmt(a.amount)}</td>
@@ -619,9 +706,7 @@ function SummaryTab() {
                 <label className="block text-sm font-medium text-slate-600 mb-1">คนงาน <span className="text-red-400">*</span></label>
                 <select className="input text-sm" value={advDraft.workerId} onChange={e => setAdvDraft(p => ({ ...p, workerId: e.target.value }))}>
                   <option value="">— เลือกคนงาน —</option>
-                  {workers.filter(w => w.active).map(w => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
+                  {workers.filter(w => w.active).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                 </select>
               </div>
               <div>
@@ -654,9 +739,9 @@ export default function WorkersPage() {
   const [tab, setTab] = useState<Tab>('attendance')
 
   const TABS: { key: Tab; label: string; icon: string }[] = [
-    { key: 'attendance', label: 'เช็คชื่อ',    icon: '📅' },
+    { key: 'attendance', label: 'เช็คชื่อ',       icon: '📅' },
     { key: 'summary',    label: 'เบิก/สรุปเดือน', icon: '💰' },
-    { key: 'workers',    label: 'จัดการคนงาน',  icon: '👷' },
+    { key: 'workers',    label: 'จัดการคนงาน',    icon: '👷' },
   ]
 
   return (
@@ -666,16 +751,12 @@ export default function WorkersPage() {
         <p className="text-sm text-slate-400 mt-0.5">จัดการคนงาน เช็คชื่อ ค่าแรง และการเบิกเงิน</p>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-2">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5
-              ${tab === t.key
-                ? 'bg-brand-600 text-white'
-                : 'bg-white border border-slate-200 text-slate-600 hover:border-brand-400'}`}>
-            <span>{t.icon}</span>
-            <span>{t.label}</span>
+              ${tab === t.key ? 'bg-brand-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:border-brand-400'}`}>
+            <span>{t.icon}</span><span>{t.label}</span>
           </button>
         ))}
       </div>

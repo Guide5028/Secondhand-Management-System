@@ -8,6 +8,7 @@ import DailyPLPage    from './pages/DailyPLPage.tsx'
 import ReceiptPage    from './pages/ReceiptPage.tsx'
 import HistoryPage    from './pages/HistoryPage.tsx'
 import ProductsPage   from './pages/ProductsPage.tsx'
+import WorkersPage    from './pages/WorkersPage.tsx'
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="history"   element={<HistoryPage />} />
         <Route path="daily"     element={<DailyPLPage />} />
         <Route path="products"  element={<ProductsPage />} />
+        <Route path="workers"   element={<WorkersPage />} />
         <Route path="receipt"   element={<ReceiptPage />} />
       </Route>
     </Routes>

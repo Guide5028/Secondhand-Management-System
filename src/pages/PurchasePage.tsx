@@ -40,10 +40,9 @@ const newItem = (): Item => ({ id: nextId++, code: '', name: '', weight: '', pri
 
 export default function PurchasePage() {
   const navigate = useNavigate()
-  const [tab,        setTab]        = useState<'entry' | 'summary'>('entry')
-  const [date,       setDate]       = useState(new Date().toISOString().slice(0, 10))
-  const [sellerName, setSellerName] = useState('')
-  const [items,      setItems]      = useState<Item[]>([newItem()])
+  const [tab,   setTab]   = useState<'entry' | 'summary'>('entry')
+  const [date,  setDate]  = useState(new Date().toISOString().slice(0, 10))
+  const [items, setItems] = useState<Item[]>([newItem()])
   const [catFilter, setCatFilter] = useState('ทั้งหมด')
 
   const updateItem = (id: number, patch: Partial<Item>) =>
@@ -62,7 +61,7 @@ export default function PurchasePage() {
     if (validItems.length === 0) { alert('กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ'); return }
     const now       = new Date()
     const receiptNo = `REC-${now.getTime()}`
-    const party     = sellerName.trim() || 'ลูกค้าทั่วไป'
+    const party     = 'ลูกค้าทั่วไป'
     const txItems   = validItems.map(i => ({
       code: i.code, name: i.name,
       weight: parseFloat(i.weight), price: parseFloat(i.price),
@@ -108,16 +107,9 @@ export default function PurchasePage() {
       {tab === 'entry' && (
         <>
           <div className="card p-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">วันที่</label>
-                <input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">ชื่อผู้ขาย</label>
-                <input type="text" className="input" placeholder="ลูกค้าทั่วไป"
-                  value={sellerName} onChange={e => setSellerName(e.target.value)} />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 mb-1">วันที่</label>
+              <input type="date" className="input max-w-xs" value={date} onChange={e => setDate(e.target.value)} />
             </div>
           </div>
 
@@ -145,6 +137,7 @@ export default function PurchasePage() {
                         priceField="refPrice"
                         onSelect={p => selectProduct(item.id, p)}
                         onChange={s => updateItem(item.id, { search: s, open: true, code: '', name: '' })}
+                        onClose={() => updateItem(item.id, { open: false })}
                       />
                     </div>
                     <div className="col-span-2">
