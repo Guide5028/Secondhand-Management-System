@@ -9,24 +9,31 @@ interface Props {
   priceField?: 'refPrice' | 'sellPrice'  // ซื้อ=refPrice, ขาย=sellPrice
   onSelect: (p: { code: string; name: string; refPrice: number; sellPrice: number }) => void
   onChange: (search: string) => void
+  onClose?: () => void   // ปิด dropdown โดยไม่ clear การเลือก
 }
 
 export default function ProductSearch({
   search, code, name, open,
   priceField = 'refPrice',
-  onSelect, onChange,
+  onSelect, onChange, onClose,
 }: Props) {
   const wrapRef  = useRef<HTMLDivElement>(null)
   const products = loadProducts()
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
-        onChange(name || '')
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        // ถ้าเลือกสินค้าแล้ว (name ถูก set) → แค่ปิด dropdown ไม่ clear ชื่อ
+        if (name) {
+          onClose?.()
+        } else {
+          onChange('')
+        }
+      }
     }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
-  }, [name])
+  }, [name, onClose])
 
   const filtered = search
     ? products
