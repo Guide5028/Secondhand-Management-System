@@ -1,30 +1,15 @@
 import { useState } from 'react'
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { loadProducts } from '../data/products'
+import {
+  loadCategories,
+  loadCatAssignments,
+  getCatKey,
+  getCatColor,
+} from '../data/categories'
 
 const STORAGE_KEY = 'kankrong_stock'
 
-type CatKey = 'all' | 'copper' | 'aluminum' | 'steel' | 'plastic' | 'paper' | 'glass' | 'electronics' | 'battery' | 'other'
-
-function getCat(code: string): Exclude<CatKey, 'all'> {
-  const n = parseInt(code.replace('CR', ''))
-  if ([1,2,3,4,5,6,11,22].includes(n)) return 'copper'
-  if (n >= 7 && n <= 20) return 'aluminum'
-  if ([32,33,34,71].includes(n)) return 'steel'
-  if (n >= 23 && n <= 31) return 'plastic'
-  if (n >= 36 && n <= 39) return 'paper'
-  if ([35,40,41,42,43,44,45,46,47,48,49,50,51,52,67,68,69,70].includes(n)) return 'glass'
-  if (n >= 55 && n <= 66) return 'electronics'
-  if ([72,73,74].includes(n)) return 'battery'
-  return 'other'
-}
-
-const CAT_LABEL: Record<CatKey, string> = {
-  all: 'ทั้งหมด', copper: 'ทองแดง/ทองเหลือง', aluminum: 'มีเนียม',
-  steel: 'เหล็ก', plastic: 'พลาสติก', paper: 'กระดาษ',
-  glass: 'แก้ว/ขวด', electronics: 'อิเล็กทรอนิกส์', battery: 'แบตเตอรี่', other: 'อื่นๆ',
-}
-
-// Default stock snapshot (กก.)
 const DEFAULT_STOCK: Record<string, number> = {
   CR1: 45.5, CR2: 12.3, CR3: 8.0, CR5: 6.5, CR6: 33.0,
   CR7: 125.0, CR8: 42.0, CR10: 87.5, CR11: 18.0,
@@ -50,46 +35,49 @@ function saveStock(stock: Record<string, number>) {
 }
 
 function getStatus(weight: number): { label: string; cls: string } {
-  if (weight <= 0)   return { label: 'หมด',   cls: 'bg-red-100 text-red-600' }
-  if (weight < 20)   return { label: 'น้อย',  cls: 'bg-amber-100 text-amber-600' }
-  if (weight < 100)  return { label: 'ปกติ',  cls: 'bg-blue-100 text-blue-600' }
-  return               { label: 'มาก',   cls: 'bg-green-100 text-green-700' }
+  if (weight <= 0)  return { label: 'หมด',  cls: 'bg-red-100 text-red-600' }
+  if (weight < 20)  return { label: 'น้อย', cls: 'bg-amber-100 text-amber-600' }
+  if (weight < 100) return { label: 'ปกติ', cls: 'bg-blue-100 text-blue-600' }
+  return                   { label: 'มาก',  cls: 'bg-green-100 text-green-700' }
 }
-
-const CATS: CatKey[] = ['all','copper','aluminum','steel','plastic','paper','glass','electronics','battery','other']
 
 export default function StockPage() {
   const [stock,    setStock]    = useState<Record<string, number>>(loadStock)
   const [search,   setSearch]   = useState('')
-  const [cat,      setCat]      = useState<CatKey>('all')
+  const [catFilter, setCatFilter] = useState<string>('all')
   const [editMode, setEditMode] = useState(false)
   const [draft,    setDraft]    = useState<Record<string, string>>({})
   const [saved,    setSaved]    = useState(false)
 
-  const products = loadProducts()
+  const products    = loadProducts()
+  const categories  = loadCategories()
+  const assignments = loadCatAssignments()
 
-  // สินค้าที่มีใน stock (weight > 0) หรือถ้า editMode แสดงทั้งหมด
   const allRows = products
     .filter(p => editMode || (stock[p.code] ?? 0) > 0)
-    .map(p => ({ ...p, cat: getCat(p.code), weight: stock[p.code] ?? 0 }))
+    .map(p => ({
+      ...p,
+      catKey: getCatKey(p.code, assignments),
+      weight: stock[p.code] ?? 0,
+    }))
+    .sort((a, b) => b.weight - a.weight)
 
   const filtered = allRows
-    .filter(r => cat === 'all' || r.cat === cat)
+    .filter(r => catFilter === 'all' || r.catKey === catFilter)
     .filter(r => !search || r.name.includes(search) || r.code.toLowerCase().includes(search.toLowerCase()))
 
-  const totalWeight = Object.values(stock).reduce((s, w) => s + w, 0)
-  const inStockCount = Object.values(stock).filter(w => w > 0).length
+  const totalWeight   = Object.values(stock).reduce((s, w) => s + w, 0)
+  const inStockCount  = Object.values(stock).filter(w => w > 0).length
 
-  // สรุปตามหมวดหมู่
-  const catTotals = (Object.keys(CAT_LABEL) as CatKey[])
-    .filter(c => c !== 'all')
-    .map(c => ({
-      cat: c,
-      weight: allRows.filter(r => r.cat === c).reduce((s, r) => s + r.weight, 0),
+  // Pie chart data: weight per category
+  const pieData = categories
+    .map((cat, idx) => ({
+      name:  cat.label,
+      key:   cat.key,
+      value: allRows.filter(r => r.catKey === cat.key).reduce((s, r) => s + r.weight, 0),
+      color: getCatColor(cat.key, idx),
     }))
-    .filter(c => c.weight > 0)
-
-  const maxCatWeight = Math.max(...catTotals.map(c => c.weight), 1)
+    .filter(d => d.value > 0)
 
   const thDate = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -115,6 +103,11 @@ export default function StockPage() {
 
   const cancelEdit = () => { setDraft({}); setEditMode(false) }
 
+  const catLabel = (key: string) => {
+    if (key === 'all') return 'ทั้งหมด'
+    return categories.find(c => c.key === key)?.label ?? key
+  }
+
   return (
     <div className="space-y-5">
 
@@ -133,7 +126,7 @@ export default function StockPage() {
           {editMode ? (
             <>
               <button onClick={cancelEdit} className="btn-secondary text-sm py-1.5 px-4">ยกเลิก</button>
-              <button onClick={saveEdit} className="btn-primary text-sm py-1.5 px-4">บันทึกสต็อก</button>
+              <button onClick={saveEdit}   className="btn-primary  text-sm py-1.5 px-4">บันทึกสต็อก</button>
             </>
           ) : (
             <button onClick={startEdit} className="btn-secondary text-sm py-1.5 px-4">
@@ -163,25 +156,42 @@ export default function StockPage() {
         </div>
       </div>
 
-      {/* Category breakdown bars */}
+      {/* Pie chart card */}
       <div className="card p-5">
         <h3 className="text-sm font-semibold text-slate-700 mb-4">สรุปตามหมวดหมู่</h3>
-        <div className="space-y-2.5">
-          {catTotals.map(c => (
-            <div key={c.cat} className="flex items-center gap-3">
-              <div className="w-28 text-xs text-slate-500 text-right shrink-0">{CAT_LABEL[c.cat]}</div>
-              <div className="flex-1 bg-slate-100 rounded-full h-2">
-                <div
-                  className="bg-brand-500 h-2 rounded-full transition-all"
-                  style={{ width: `${(c.weight / maxCatWeight) * 100}%` }}
-                />
-              </div>
-              <div className="w-24 text-xs font-mono text-slate-600 text-right shrink-0">
-                {c.weight.toLocaleString('th-TH', { maximumFractionDigits: 1 })} กก.
-              </div>
-            </div>
-          ))}
-        </div>
+        {pieData.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-8">ไม่มีข้อมูลสต็อก</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <PieChart>
+              <Pie
+                data={pieData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                innerRadius={65}
+                outerRadius={105}
+                paddingAngle={2}
+              >
+                {pieData.map((entry, idx) => (
+                  <Cell key={entry.key} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value) => {
+                  const n = typeof value === 'number' ? value : 0
+                  return [`${n.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} กก.`, 'น้ำหนัก']
+                }}
+              />
+              <Legend
+                formatter={(value) => (
+                  <span className="text-xs text-slate-600">{value}</span>
+                )}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* Search + Category filter */}
@@ -194,21 +204,21 @@ export default function StockPage() {
           onChange={e => setSearch(e.target.value)}
         />
         <div className="flex flex-wrap gap-1.5">
-          {CATS.map(c => {
-            const count = c === 'all'
+          {(['all', ...categories.map(c => c.key)] as string[]).map(key => {
+            const count = key === 'all'
               ? allRows.length
-              : allRows.filter(r => r.cat === c).length
-            if (c !== 'all' && count === 0) return null
+              : allRows.filter(r => r.catKey === key).length
+            if (key !== 'all' && count === 0) return null
             return (
               <button
-                key={c}
-                onClick={() => setCat(c)}
+                key={key}
+                onClick={() => setCatFilter(key)}
                 className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors
-                  ${cat === c
+                  ${catFilter === key
                     ? 'bg-brand-600 text-white border-brand-600'
                     : 'bg-white text-slate-600 border-slate-200 hover:border-brand-300'}`}
               >
-                {CAT_LABEL[c]}{c !== 'all' && <span className="ml-1 opacity-60">({count})</span>}
+                {catLabel(key)}{key !== 'all' && <span className="ml-1 opacity-60">({count})</span>}
               </button>
             )
           })}
@@ -228,7 +238,7 @@ export default function StockPage() {
               <th className="px-5 py-3 text-left w-16">รหัส</th>
               <th className="px-5 py-3 text-left">ชื่อสินค้า</th>
               <th className="px-5 py-3 text-left w-36">หมวดหมู่</th>
-              <th className="px-5 py-3 text-right w-36">น้ำหนักคงเหลือ (กก.)</th>
+              <th className="px-5 py-3 text-right w-40">น้ำหนักคงเหลือ (กก.)</th>
               <th className="px-5 py-3 text-center w-24">สถานะ</th>
             </tr>
           </thead>
@@ -240,12 +250,14 @@ export default function StockPage() {
                 </td>
               </tr>
             ) : filtered.map(r => {
-              const status = getStatus(editMode ? (parseFloat(draft[r.code]) || 0) : r.weight)
+              const displayWeight = editMode ? (parseFloat(draft[r.code]) || 0) : r.weight
+              const status        = getStatus(displayWeight)
+              const catObj        = categories.find(c => c.key === r.catKey)
               return (
                 <tr key={r.code} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
                   <td className="px-5 py-2.5 font-mono text-xs text-slate-400">{r.code}</td>
                   <td className="px-5 py-2.5 font-medium text-slate-800">{r.name}</td>
-                  <td className="px-5 py-2.5 text-xs text-slate-500">{CAT_LABEL[r.cat]}</td>
+                  <td className="px-5 py-2.5 text-xs text-slate-500">{catObj?.label ?? r.catKey}</td>
                   <td className="px-5 py-2.5 text-right">
                     {editMode ? (
                       <input
